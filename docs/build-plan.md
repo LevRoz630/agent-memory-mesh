@@ -102,7 +102,7 @@ judge's first ten seconds land.
 | Fri 18:00 | New public repo, `npm init`, install SDKs. Hacking clock starts. | |
 | Fri 18:30 | **Opening ceremony** — attend, don't skip | bounties get explained live |
 | Fri 19:00 | **Arkiv workshop** — attend | leaves you with schema.md draft, requirement 1 done in 20 min |
-| Fri 19:30–20:30 | **ENSv2 registration, hard-capped at 60 min**: mint test token → approve → register parent + 2 subnames on Sepolia. If the 3-tx flow isn't through by 20:30, **stop and drop ENS** — ship Arkiv+Swarm only and reclaim the time | weakest EV line of the three (beta contracts, "may still change" warning, pool "splits up to five ways") — front-load it, but don't let it eat the night |
+| Fri 19:30–20:30 | ~~ENSv2 registration, hard-capped at 60 min~~ **DONE** — `atlas-ethrome26.eth` + `nova-ethrome26.eth` registered on Sepolia, see `EVIDENCE.md`. First attempt hit a wrong ABI (doc-summary had `duration` as `uint256`; the real deployed contract takes `uint64`) — fixed against Blockscout's verified ABI, both names registered clean on the second try | weakest EV line of the three going in; came in well under the cap once the ABI was right |
 | Fri 21:00–22:30 | Finalize `/arkiv/schema.md`; write entity create/query helpers | |
 | Fri 22:30–00:00 | Swarm ID integration; one encrypted upload/retrieval round trip | |
 | Fri 00:00 | Commit, sleep | protect Sunday-morning judgment |
