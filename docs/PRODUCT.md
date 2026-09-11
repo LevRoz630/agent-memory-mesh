@@ -188,9 +188,8 @@ cannot satisfy it, for any caller, including the real owner. The other resolver 
 Sepolia deployments table, `ENSV2Resolver`, turned out to be a read-only CCIP-read mirror
 that forwards lookups rather than storing writable records — not an alternative. The fix
 would be a custom resolver checking ownership against the ENSv2 registry directly; not
-attempted here, since the registration itself already satisfies "does real work" /
-"end-to-end on live testnet data"
-without this.
+attempted, since the registration itself already satisfies "does real work" / "end-to-end
+on live testnet data" without this.
 
 ## Demo script, mapped to what each judge is checking
 
@@ -214,14 +213,14 @@ without this.
    place data lives — that's a direct quote from their own brief, and it's the answer to
    their "Arkiv fit and trade-offs" criterion.
 
-## Known risks
+## Still worth saying in the pitch
 
-| Risk | Mitigation |
-|---|---|
-| ENSv2 registration flow untested, beta, three transactions before a name exists | Do it first, hard 60-minute cap, drop ENS if it blows the cap |
-| "AI agent memory" as a category is common in 2026 AI-track pitches | Differentiate on the mechanic, not the category: expiry with no delete call, content-addressed portability instead of vendor lock-in, live handoff over a subscription instead of polling — say this, don't assume the demo makes it obvious |
-| Two-panel demo has to serve both the Arkiv Mission 03 judges and the general ETHRome judges | It's the same artifact for both — don't build two separate demos, don't cut corners on either angle |
-| Arkiv's live rubric has already changed once between the mission-page brief and the actual `hub.arkiv.network/ethrome` page | Re-check that page again before finalizing the pitch |
+- **"AI agent memory" is a common 2026 AI-track category.** Differentiate on the mechanic,
+  not the category: real expiry with no delete call, content-addressed portability instead
+  of vendor lock-in, a live handoff over a subscription instead of polling. Say this —
+  don't assume the demo makes it obvious.
+- **Arkiv's live rubric has changed once already** between the mission-page brief and
+  `hub.arkiv.network/ethrome`. Re-check that page once more before judging.
 
 ## Reference
 

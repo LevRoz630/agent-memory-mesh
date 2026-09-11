@@ -13,24 +13,21 @@ Maps onto language each sponsor used unprompted in their own brief: Swarm's
 an agent controlled namespace," Arkiv's own "extend on activity" / "let an entity lapse"
 patterns.
 
-## Bounties targeted — and the one skipped
+## Bounties targeted
 
-- **Arkiv** — Mission 02 (Built to expire), Mission 03 (Live wire), Best Use overall.
-  **Skip Mission 01** — no pre-existing indexer exists to decommission; inventing one to
-  turn off is against the brief's own guidance.
-- **Swarm** — real upload/retrieval via Swarm ID (gateway, no Bee node).
+- **Arkiv** — Mission 02 (Built to expire), Mission 03 (Live wire), Best Use. Skipping
+  Mission 01 — no pre-existing indexer to decommission.
+- **Swarm** — real upload/retrieval, gateway, no Bee node.
 - **ENS** — ENSv2 beta on Sepolia, name = agent identity.
-- **Team1 — not pursued.** Wrong network (Fuji/Avalanche) for this product; forcing it in
-  would dilute the demo for no clean narrative fit.
+- **Team1 — not pursued.** Wrong network (Avalanche) for this product.
 
 ## Architecture
 
 ```
 Agent writes a memory
   → encrypt content
-  → upload to Swarm (Swarm ID, gateway, no stamp/Bee node) → get content ref
+  → upload to Swarm → get content ref
   → create Arkiv entity: { agent_id, memory_type, tag, importance, swarm_ref, $expiresAt }
-  → (short-lived memories: $expiresAt ~60-90s for the demo)
 
 Second panel / process (the other "agent")
   → watchEntityEvents(webSocket transport, NO fromBlock)
@@ -39,153 +36,106 @@ Second panel / process (the other "agent")
   → renders it
 ```
 
-Arkiv holds the **index only** — small, typed, queryable, expiring. Swarm holds the
-**content** — bulk, content-addressed, portable. This split is the actual answer to
-Arkiv's own "not file storage, think of it as the index over your data" guidance, and
-it's the headline of the Arkiv fit-and-trade-offs write-up.
+Arkiv holds the index only. Swarm holds the content. That split is the answer to Arkiv's
+own "not file storage, it's the index over your data" framing.
 
-### Draft schema (`/arkiv/schema.md`)
-
-Entity type `agent_memory`:
+### Schema (`/arkiv/schema.md`)
 
 | Attribute | Type | Purpose |
 |---|---|---|
-| `agent_id` | str | which agent identity (matches the ENS name's label) |
+| `agent_id` | str | which agent (matches the ENS name's label) |
 | `memory_type` | str | `fact` \| `task` \| `preference` \| `event` |
-| `tag` | str | short topic/category string |
-| `importance` | u64 | 0–10 salience, enables range queries |
-| `swarm_ref` | str | Swarm content hash — the pointer, not the content |
-| `$expiresAt` | native | TTL; short for "working memory," extended for anything durable |
+| `tag` | str | short topic string |
+| `importance` | u64 | 0–10, range queries |
+| `swarm_ref` | str | pointer to Swarm content, not the content |
+| `$expiresAt` | native | TTL |
 
-Demo queries for the judging session (compound, not id lookup):
-`agent_id=X AND memory_type=Y AND importance>=N`, `agent_id=X AND tag startsWith 'proj'`.
+Demo queries: `agent_id=X AND memory_type=Y AND importance>=N`, `agent_id=X AND tag startsWith 'proj'`.
 
-### ENSv2 leg
+### ENS
 
-**Plan:** one parent name, two agent subnames (`atlas.<parent>.eth`, `nova.<parent>.eth`)
-on the Sepolia beta deployment, resolver text record on each. Depth-of-integration story:
-**the subname is the identity**, not a lookup.
-
-**Known friction, expected going in:** registering a subname needs minting a test token,
-approving the registrar, then registering — three transactions before you have a name,
-and ENSv2's write flows are flagged by their own docs as "may still change before
-mainnet." This is the one leg with zero prior validated code. Do it **first**, so
-any beta surprise is absorbed early rather than discovered later on the critical path.
-
-**Outcome:** flat top-level names (`atlas-ethrome26.eth`, `nova-ethrome26.eth`) instead of
-a parent-plus-subname hierarchy — true subname creation needed deploying a custom
-subregistry contract, which didn't fit the cap. Both registered clean after fixing a wrong
-ABI (a doc summary had `duration` as `uint256`, the real contract takes `uint64`). Profile
-text records are blocked by a real `PublicResolverV2` limitation — not attempted further,
-see the EV analysis below. Full detail in `docs/PRODUCT.md` Component 3 and `EVIDENCE.md`.
+Planned a parent name plus a subname per agent. Built instead: two flat top-level names,
+`atlas-ethrome26.eth` and `nova-ethrome26.eth` — true subname creation needed a custom
+subregistry contract, didn't fit the time budget. Registered clean after fixing a wrong ABI
+(a doc summary had `duration` as `uint256`; the real contract takes `uint64`). Profile text
+records are blocked by a real `PublicResolverV2` limitation, not pursued further — see
+`docs/PRODUCT.md` Component 3 for the root cause.
 
 ## Cuts, in order, if time runs short
 
-1. **ENS entirely** — weakest EV line of the three (hard 60-min cap, drop if it resists).
-   Losing it costs a share of a $500 pool; Arkiv+Swarm alone still makes a complete,
-   judgeable product.
-2. Drop the "extend on activity" long-term-memory lease pattern — keep only the
-   "let it lapse" pattern for Mission 02. One pattern, well demonstrated, beats two half-done.
-3. Drop ENSv2 resolver depth (roles/delegation, text records) — the registered names alone
-   still qualify ("does real work," "end-to-end on live testnet data"), just not maximal.
-4. If Swarm ID has rough edges, fall back to a plain gateway `fetch()` — the brief allows
-   this if you say why in the README.
-5. Never cut: the live two-panel update (it's simultaneously Mission 03's exact ask and
-   the whole product demo), and a public deployment of the app (Arkiv's own submission
-   form asks for a deployment URL, not just a local demo).
+1. ENS entirely — weakest line of the three, costs a share of a $500 pool.
+2. The "extend on activity" lease pattern — keep only "let it lapse" for Mission 02.
+3. ENSv2 resolver depth (roles/delegation, text records) — registration alone still
+   qualifies.
+4. Swarm ID → plain gateway `fetch()` if it has rough edges.
+5. Never cut: the live two-panel update (Mission 03 and the product demo, same artifact),
+   or the public deployment (Arkiv's Tally form asks for a URL, not just a local demo).
 
 ## Demo content
 
-Make the demo memories concrete and human-legible, not abstract placeholders. Not
-`{memory_type: "fact", tag: "x"}` — something like an agent remembering a specific user
-preference or a specific task detail that a viewer immediately understands the value of
-losing/keeping. Costs nothing, keeps every mechanic identical, makes the cold 3-minute
-judge's first ten seconds land.
+Make the demo memories concrete and human-legible — an agent remembering a specific user
+preference or task detail, not `{memory_type: "fact", tag: "x"}`. Free, and it's what makes
+the cold 3-minute judge's first ten seconds land.
 
-## Schedule (Europe/Rome, all times from the official hacker manual)
+## Schedule (Europe/Rome)
 
-| When | Do | Why now |
+| When | Status | Artifact |
 |---|---|---|
-| Fri 18:00 | New public repo, `npm init`, install SDKs. Hacking clock starts. | |
-| Fri 18:30 | **Opening ceremony** — attend, don't skip | bounties get explained live |
-| Fri 19:00 | **Arkiv workshop** — attend | leaves you with schema.md draft, requirement 1 done in 20 min |
-| Fri 19:30–20:30 | ~~ENSv2 registration, hard-capped at 60 min~~ **DONE** — `atlas-ethrome26.eth` + `nova-ethrome26.eth` registered on Sepolia, see `EVIDENCE.md`. First attempt hit a wrong ABI (doc-summary had `duration` as `uint256`; the real deployed contract takes `uint64`) — fixed against Blockscout's verified ABI, both names registered clean on the second try | weakest EV line of the three going in; came in well under the cap once the ABI was right |
-| Fri 21:00–22:30 | ~~Finalize `/arkiv/schema.md`; write entity create/query helpers~~ **DONE** — `arkiv/schema.md` written and iterated against `check_schema`; `src/arkiv.mjs` verified against the SDK's shipped source, not docs | |
-| Fri 22:30–00:00 | ~~Swarm integration~~ **DONE, ahead of schedule** — `src/swarm.mjs`, app-level AES-256-GCM before upload (`@snaha/swarm-id` turned out browser-only, gateway `fetch()` instead, justified in `friction.md`) | |
-| — | ~~Write path~~ **DONE** — `src/memory.mjs`, full encrypt→Swarm→Arkiv round trip verified live | moved up from the planned Sat 09:00–13:00 slot, everything so far went faster than budgeted |
-| — | ~~Live subscription leg + the whole app~~ **DONE** — `server.mjs` + `public/index.html`, real websocket push verified end-to-end with a test client (write via curl, decrypted content arrives over `/live` in ~6s) | moved up from the planned Sat 14:00–17:00 slot; this *is* Mission 03 and the product demo, same artifact |
-| — | ~~Expiry demo~~ **DONE** — `scripts/demo-expiry.mjs`, run live: 1 row before the boundary, 0 after, zero `deleteEntity` calls, requested/applied expiry recorded in `EVIDENCE.md` | moved up from the planned Sat 17:00–19:00 slot; Mission 02 |
-| — | ~~`friction.md`~~ **DONE**, written fresh with real findings from this session, not the pre-flight draft | moved up from the planned Sat 19:00–19:30 slot |
-| — | ~~Deploy publicly~~ **DONE** — live on Vercel (`--temporary`, see `EVIDENCE.md` for the URL and the real deploy failure it took to get there), REST verified end-to-end against the deployed URL | moved up from the planned Sat 19:30–21:00 slot |
-| Sat (whenever this lands) | Sleep, then: redeploy the Vercel production build once more right before Sunday's submission window, rehearse the demo, double-check the Arkiv/Swarm evidence is airtight — those are the two bounties with real money on them | everything core is done a full day ahead of the original schedule — remaining time is slack, not catch-up |
+| Fri 18:00 | Repo created, SDKs installed | |
+| Fri 18:30 | Opening ceremony | |
+| Fri 19:00 | Arkiv workshop | |
+| Fri 19:30–20:30 | **Done** — both ENS names registered | `EVIDENCE.md` |
+| Fri 21:00–22:30 | **Done** — schema + entity helpers | `arkiv/schema.md`, `src/arkiv.mjs` |
+| Fri 22:30–00:00 | **Done** — Swarm integration | `src/swarm.mjs` |
+| — | **Done** — write path | `src/memory.mjs` |
+| — | **Done** — live subscription + full app | `server.mjs`, `public/index.html` |
+| — | **Done** — expiry demo | `scripts/demo-expiry.mjs`, `EVIDENCE.md` |
+| — | **Done** — friction report | `friction.md` |
+| — | **Done** — public deployment | `agent-memory-mesh.vercel.app` |
+| Sat | Sleep, then: final redeploy, rehearse the demo, re-check Arkiv/Swarm evidence | |
+| Sun 09:00–09:45 | Fresh end-to-end run against the deployed URL, record the demo video (≤3 min, face on camera) | |
+| Sun 09:45–10:00 | Submit both forms — ETHRome Google Form + Arkiv's Tally form | |
+| Sun 10:30 | Judging | |
 
-**Decision on the ENS text record: skip it, deliberately.** Weighed via an EV analysis —
-deploying a custom resolver to fix it is a genuinely different kind of work (writing and
-deploying a Solidity contract, no toolchain installed yet, an unfamiliar registry
-interface) with a realistic 90-150 minute cost and real tail risk if the auth check is
-subtly wrong on the first try. Against that: the pool is $500 split up to five ways, and
-the marginal move from "diagnosed a real protocol-level authorization mismatch, confirmed
-on-chain" to "also has a working text record" is capped and speculative — arguably the
-diagnosis itself is the sharper signal of depth. The two bounties with actual money
-riding on them, Arkiv ($2,500) and Swarm ($1,000), are where re-verification time earns
-more, and the demo video/rehearsal is human-only, non-delegable, and matters across every
-prize line. Sharpened the write-up in `docs/PRODUCT.md` Component 3 instead — ~15 minutes,
-zero deployment risk.
-| Sun 09:00–09:45 | Full fresh end-to-end run-through against the deployed URL; record demo video (≤3 min, landscape, face on camera) — optional for Arkiv's own form but required for ETHRome's general submission | |
-| Sun 09:45–10:00 | Submit both forms: ETHRome Google Form (repo, video, contract addresses) and Arkiv's Tally form (repo, deployment URL, missions completed, creator wallet + entity keys/tx hashes, feedback.md link) | |
-| Sun 10:30 | Judging — walk Arkiv + Swarm mentors and general judges through it | |
+Everything through the Friday-night block finished a full day ahead of schedule; Saturday
+is genuine slack, not catch-up.
 
-## Corrected against `guides/ethrome-current` (queried live via the arkiv-ethrome MCP,
-mid-build — this supersedes the hacker-manual mission-page text above where they conflict)
+## Corrected against `guides/ethrome-current`
 
-- **No mandatory Saturday conversation.** The current guidance explicitly says not to
-  restore "the compulsory Saturday conversation... old deadlines." Dropped from the
-  schedule above.
-- **No hard schema.md gate**, confirmed again — `arkiv/submission.md`/`schema.md` is
-  "useful project documentation," not a mandatory artifact.
-- **Public deployment required for Arkiv's own Tally form** — a deployment URL (their
-  form suggests Vercel), not just a local demo. Video is optional *for that form* but
-  still required for ETHRome's own general submission (Google Form).
-- **Mission 02 correction:** use block-based expiration
-  (`ExpirationTime.fromBlocks(n)`), and record the *requested* duration separately from
-  the *applied* expiration height returned by the creation receipt — they can differ.
-  Confirmed: Mission 02 does not itself require a websocket.
-- **Mission 03 correction, architecturally real:** the `watchEntityEvents` callback does
-  **not** carry entity attributes or payload — only change metadata (e.g. owner). Treat
-  that as an initial relevance filter only, then do a bounded follow-up `getEntity` read
-  to fetch the actual attributes (`swarm_ref`, etc.). The write path in this doc's
-  architecture section needs that explicit read step added, not "receives the new entity"
-  as if attributes ride along with the event.
-- **Mission 03 demo, additional asks:** show an irrelevant change that does *not* trigger
-  a UI update (proves the filter is real, not just "something happened"), and test/record
-  disconnect + reconnect behavior, and stop the watcher on unmount.
-- **Evidence to prepare:** public Tiramisu creator-wallet address(es), entity keys mapped
-  to their creation transactions, and for Mission 02 both the requested and applied
-  expiration values from the receipt.
-- **Currency discrepancy, resolved by assumption:** hacker manual says USDC, MCP guidance
-  says "EUR 2,500" — treating the EUR figure as the MCP doc's mistake, going with USDC
-  per the manual (matches the confirmed Sept 3 rail). Not worth spending workshop time
-  confirming; doesn't change anything about how the app gets built.
+Queried live via the arkiv-ethrome MCP mid-build — supersedes the hacker-manual text where
+they conflict:
+
+- No mandatory Saturday conversation with Arkiv.
+- No hard schema.md gate — useful documentation, not a mandatory artifact.
+- Arkiv's Tally form wants a public deployment URL, not just a local demo.
+- Mission 02: use block-based expiration; record requested vs. applied duration separately
+  (they can differ) — no websocket required for this mission.
+- Mission 03: `watchEntityEvents` carries no attributes/payload, only change metadata —
+  needs a bounded follow-up `getEntity` read.
+- Mission 03 evidence should also show an irrelevant event *not* triggering a UI update,
+  and disconnect/reconnect behavior.
+- Evidence to prepare: creator wallet address, entity keys mapped to creation transactions,
+  requested vs. applied expiry.
+- Currency: hacker manual says USDC, MCP guidance says EUR — going with USDC.
 
 ## Qualification checklists
 
 **Arkiv:** tick Arkiv + name missions · public repo · public deployment URL · `friction.md`
-(or `feedback.md`) linked · creator wallet + entity key/tx evidence.
+· creator wallet + entity key/tx evidence.
 
-**Swarm:** public repo (open license appreciated) · short README · a demo · one line on
-where you'd take it next.
+**Swarm:** public repo · short README · a demo · one line on future direction.
 
-**ENS:** talks to official ENSv2 beta contracts on Sepolia · does real work, not decorative ·
-end-to-end on live testnet data, no hardcoded names/results · repo · Sepolia names/contract
-addresses/tx links · working demo or video + architecture explanation at judging.
+**ENS:** official ENSv2 beta contracts on Sepolia · real work, not decorative · end-to-end
+on live testnet data, no hardcoded results · Sepolia names/addresses/tx links · demo +
+architecture explanation at judging.
 
-**ETHRome minimums (all projects):** open source · contract addresses for anything deployed
-on chain · ≤3-minute demo video, works logged out.
+**ETHRome minimums:** open source · contract addresses for anything deployed · ≤3-minute
+demo video, works logged out.
 
 ## Demo video script (3 minutes)
 
-1. One sentence on who you are, one sentence on what this is.
-2. Agent A "remembers" something → show it encrypt, land on Swarm, index on Arkiv.
-3. Agent B's screen updates **with no refresh** — this is the live-wire moment.
-4. Fast-forward: a short-TTL memory disappears from a query with no delete call.
-5. One line each on the ENS name identity and why the content lives on Swarm, not Arkiv.
+1. Who you are, what this is, one sentence each.
+2. Agent A remembers something → encrypt, land on Swarm, index on Arkiv.
+3. Agent B's screen updates with no refresh — the live-wire moment.
+4. Fast-forward: a short-TTL memory disappears from a query, no delete call.
+5. One line each on the ENS identity and why content lives on Swarm, not Arkiv.
