@@ -2,20 +2,29 @@
 
 ## Public deployment
 
-`https://temporary-zippy-viola-vexk6b6.vercel.app` — **temporary, expires ~60 min after
-deploy.** Deployed via `vercel deploy --temporary` (no login needed for this session), full
-write→Swarm→Arkiv→query round trip verified live against it. Must be re-deployed (or
-claimed at the claim URL printed by the deploy command, which needs a Vercel login) closer
-to Sunday submission — do not rely on this exact URL still being up by then.
+**`https://agent-memory-mesh.vercel.app`** — permanent, deployed under the project owner's
+own Vercel account (logged in via `vercel login` mid-build). Full write→Swarm→Arkiv→query
+round trip verified live against it.
 
-To redeploy: `vercel deploy --temporary --yes -e ARKIV_PRIVATE_KEY=... -e MEMORY_ENC_KEY=...`
-from the repo root. First attempt at this deploy failed outright
-(`FUNCTION_INVOCATION_FAILED` on every route) — Vercel's zero-config "express" framework
-detection had auto-wrapped `server.mjs` itself as a second function, and `server.mjs` calls
-`httpServer.listen()` and creates a `WebSocketServer`, neither of which is valid inside a
-serverless function invocation. Fixed with `"framework": null` in `vercel.json`, which
-opts out of that auto-detection entirely and leaves only the explicit `api/index.mjs`
-function plus native static serving of `public/`.
+One gotcha worth recording: the deployment-hash URL Vercel prints after `vercel deploy`
+(`agent-memory-mesh-<hash>-leviticus.vercel.app`) returns a 302 to Vercel's own SSO login —
+Deployment Protection is on by default for team/personal-account deployments. The stable
+project-alias URL above (`agent-memory-mesh.vercel.app`, no hash, assigned automatically on
+first production deploy) is **not** behind that wall and is the one to actually share.
+
+To redeploy: `vercel deploy --yes -e ARKIV_PRIVATE_KEY=... -e MEMORY_ENC_KEY=...` from the
+repo root (drop `--yes` if you want the interactive prompts). Before the login, an
+anonymous `vercel deploy --temporary` path was used and also worked, but expires ~60
+minutes after each deploy.
+
+Getting a working deploy at all took two real fixes, both confirmed via
+`.vercel/output/config.json` and live testing, not assumed:
+1. First attempt failed outright (`FUNCTION_INVOCATION_FAILED` on every route, static
+   files included) — Vercel's zero-config "express" framework detection had auto-wrapped
+   `server.mjs` itself as a second function, and `server.mjs` calls `httpServer.listen()`
+   and creates a `WebSocketServer`, neither valid inside a serverless function invocation.
+   Fixed with `"framework": null` in `vercel.json`.
+2. The deployment-hash URL's SSO wall, above.
 
 
 Filled in as things actually happen, not reconstructed after the fact. Used for the

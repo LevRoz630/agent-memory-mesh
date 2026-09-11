@@ -60,15 +60,18 @@ the actual Mission 03 artifact; see `EVIDENCE.md` for a recorded proof.
 
 ## Deploy
 
+Live at **https://agent-memory-mesh.vercel.app**.
+
 ```bash
-vercel deploy --temporary --yes -e ARKIV_PRIVATE_KEY=... -e MEMORY_ENC_KEY=...
+vercel deploy --yes -e ARKIV_PRIVATE_KEY=... -e MEMORY_ENC_KEY=...
 ```
 
-No login needed for a temporary (60-minute) deployment; `vercel login` first for a
-permanent one. The deployed version has no persistent websocket (Vercel's serverless
-functions can't hold one) — the frontend automatically falls back to polling
-`/api/recent` every 3 seconds instead. The real subscription mechanism is demonstrated
-locally; see `docs/PRODUCT.md`'s architecture section and `EVIDENCE.md`.
+(`vercel login` first if not already authenticated.) The deployed version has no
+persistent websocket (Vercel's serverless functions can't hold one) — the frontend
+automatically falls back to polling `/api/recent` every 3 seconds instead. The real
+subscription mechanism is demonstrated locally; see `docs/PRODUCT.md`'s architecture
+section and `EVIDENCE.md`. Note: the deployment-hash URL Vercel prints after deploying is
+behind Vercel's own SSO wall by default — use the plain project-alias URL above instead.
 
 ## Status
 
