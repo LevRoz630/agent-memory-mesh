@@ -103,17 +103,14 @@ judge's first ten seconds land.
 | Fri 18:30 | **Opening ceremony** — attend, don't skip | bounties get explained live |
 | Fri 19:00 | **Arkiv workshop** — attend | leaves you with schema.md draft, requirement 1 done in 20 min |
 | Fri 19:30–20:30 | ~~ENSv2 registration, hard-capped at 60 min~~ **DONE** — `atlas-ethrome26.eth` + `nova-ethrome26.eth` registered on Sepolia, see `EVIDENCE.md`. First attempt hit a wrong ABI (doc-summary had `duration` as `uint256`; the real deployed contract takes `uint64`) — fixed against Blockscout's verified ABI, both names registered clean on the second try | weakest EV line of the three going in; came in well under the cap once the ABI was right |
-| Fri 21:00–22:30 | Finalize `/arkiv/schema.md`; write entity create/query helpers | |
-| Fri 22:30–00:00 | Swarm ID integration; one encrypted upload/retrieval round trip | |
-| Fri 00:00 | Commit, sleep | protect Sunday-morning judgment |
-| Sat 09:00–13:00 | Write path: encrypt → Swarm upload → Arkiv entity with `$expiresAt` | |
-| Sat 14:00–17:00 | **Live subscription leg** — websocket watcher, no `fromBlock`, second panel updates in real time | this *is* Mission 03 and the product demo, same artifact |
-| Sat 17:00–19:00 | Expiry demo — short-TTL memory, query before/after boundary, no delete call | Mission 02 |
-| Sat 19:00–19:30 | Bug buffer; write/date `friction.md` from what actually broke this weekend | |
-| Sat 19:30–21:00 | **Deploy publicly** (Vercel) + polish: README, compound-query demo, schema.md trade-off writeup, resolver polish | Arkiv's own Tally form asks for a live deployment URL, not just a local demo — reclaimed from the old (stale) mandatory-conversation slot |
-| Sat 21:00–21:30 | Dinner | |
-| Sat 21:30–00:00 | Continue polish; record `feedback.md` observations as they happen, don't leave it to Sunday | |
-| Sat 00:00 | Sleep | |
+| Fri 21:00–22:30 | ~~Finalize `/arkiv/schema.md`; write entity create/query helpers~~ **DONE** — `arkiv/schema.md` written and iterated against `check_schema`; `src/arkiv.mjs` verified against the SDK's shipped source, not docs | |
+| Fri 22:30–00:00 | ~~Swarm integration~~ **DONE, ahead of schedule** — `src/swarm.mjs`, app-level AES-256-GCM before upload (`@snaha/swarm-id` turned out browser-only, gateway `fetch()` instead, justified in `friction.md`) | |
+| — | ~~Write path~~ **DONE** — `src/memory.mjs`, full encrypt→Swarm→Arkiv round trip verified live | moved up from the planned Sat 09:00–13:00 slot, everything so far went faster than budgeted |
+| — | ~~Live subscription leg + the whole app~~ **DONE** — `server.mjs` + `public/index.html`, real websocket push verified end-to-end with a test client (write via curl, decrypted content arrives over `/live` in ~6s) | moved up from the planned Sat 14:00–17:00 slot; this *is* Mission 03 and the product demo, same artifact |
+| — | ~~Expiry demo~~ **DONE** — `scripts/demo-expiry.mjs`, run live: 1 row before the boundary, 0 after, zero `deleteEntity` calls, requested/applied expiry recorded in `EVIDENCE.md` | moved up from the planned Sat 17:00–19:00 slot; Mission 02 |
+| — | ~~`friction.md`~~ **DONE**, written fresh with real findings from this session, not the pre-flight draft | moved up from the planned Sat 19:00–19:30 slot |
+| — | ~~Deploy publicly~~ **DONE** — live on Vercel (`--temporary`, see `EVIDENCE.md` for the URL and the real deploy failure it took to get there), REST verified end-to-end against the deployed URL | moved up from the planned Sat 19:30–21:00 slot |
+| Sat (whenever this actually lands) | Sleep, then: set ENS text records if time allows (currently blocked, see `friction.md`), redeploy/claim the Vercel deployment closer to Sunday since the temporary one expires, rehearse the demo | everything core is done a full day ahead of the original schedule — remaining time is genuinely slack, not catch-up |
 | Sun 09:00–09:45 | Full fresh end-to-end run-through against the deployed URL; record demo video (≤3 min, landscape, face on camera) — optional for Arkiv's own form but required for ETHRome's general submission | |
 | Sun 09:45–10:00 | Submit both forms: ETHRome Google Form (repo, video, contract addresses) and Arkiv's Tally form (repo, deployment URL, missions completed, creator wallet + entity keys/tx hashes, feedback.md link) | |
 | Sun 10:30 | Judging — walk Arkiv + Swarm mentors and general judges through it | |
