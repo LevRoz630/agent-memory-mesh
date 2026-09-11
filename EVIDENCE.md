@@ -23,14 +23,52 @@ Contracts used (Sepolia ENSv2 beta, from `docs.ens.domains/learn/deployments`):
 `PublicResolverV2` `0xe7b9a25607e02da8145e4eb1836ca539e53f11f7` (set as resolver at
 registration).
 
-Still open: setting a text record on each name (the agent profile string, per
-`docs/PRODUCT.md` Component 3) — registration and records are separate steps per ENS's own
-docs, not done yet.
+Still open: setting a text record on each name. Attempted and blocked by a real limitation
+in `PublicResolverV2` — see `friction.md` and the commit `87fe227` message for the
+on-chain-confirmed root cause. Registration itself already satisfies "does real work" /
+"end-to-end on live testnet data" without this.
 
 ## Arkiv — Tiramisu
 
-Not yet written — next block in `docs/build-plan.md`.
+Creator/owner wallet: `0x9F5997ecB905211a464F29090900468BDBa286C1`
+
+**Write path**, live, `agent_memory` entities created via `src/memory.mjs`'s `writeMemory`
+(encrypt → Swarm → Arkiv entity), e.g. entity
+[`0xb762042b49aa288cb27f1084ccef3f234629a618812a8d4ecf93104d806a154a`](https://tiramisu.explorer.arkiv.network/)
+via tx `0xb015b269f43680c96d0a927d5f137166f3db9190b01bf3cebe14803f38bd99a5`.
+
+**Mission 02, Built to expire** — `scripts/demo-expiry.mjs`, run live:
+
+| | |
+|---|---|
+| Entity key | `0x4cb58a281dc35289f6c0ec97b82e849799d52685155d6a637be056f9ea3c2fb1` |
+| Creation tx | `0x1dd2c53a001667a26623e01d93540432a380d88e1de965836a997e1580ef4120` |
+| Requested lifetime | 8 blocks |
+| Applied expiry (from receipt) | block 323562 |
+| Written at | block 323552 |
+| Query before expiry | 1 row |
+| Query after expiry (block 323565) | 0 rows |
+| `deleteEntity` calls made | 0 |
+
+Requested (8) and applied (10 blocks' worth, 323562−323552) differ, exactly as
+`ExpirationTime.fromBlocks`'s own docs say they can — the tx landed a couple blocks after
+the head was captured.
+
+**Mission 03, Live wire** — `server.mjs` + `src/arkiv.mjs`'s `watchMemories`, live
+end-to-end test: a `POST /api/memory` write triggered a real `EntityCreated` websocket
+event, a bounded `getEntity` follow-up read, a Swarm fetch+decrypt, and a push to a
+connected client over `/live` — no polling, no refresh, verified with
+`scripts/ws-test-client.mjs` receiving the decrypted content within ~6s of the write.
 
 ## Swarm
 
-Not yet written.
+Gateway: `api.gateway.ethswarm.org`, no postage stamp, no Bee node (see `src/swarm.mjs` and
+`friction.md`/`docs/PRODUCT.md` for why `@snaha/swarm-id` wasn't used — it's browser-iframe
+auth, no fit for a server writing memories programmatically).
+
+Content is app-level AES-256-GCM encrypted before upload — the gateway never sees
+plaintext. Example reference from a live write:
+`0246bf131185b1c5829616bb4932194734bbbf50ec91a976a5bdcd8612e11e6b` (64 hex, plain reference
+— app-level encryption means Swarm's own `Swarm-Encrypt` header and its 128-hex-ref
+behavior aren't used here). Round-trip verified byte-for-byte via `src/swarm.mjs`'s live
+test and again through every write in the full product flow.

@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Agent Memory Mesh</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root { color-scheme: light dark; }
+  body { font-family: -apple-system, system-ui, sans-serif; max-width: 900px; margin: 2rem auto; padding: 0 1rem; line-height: 1.4; }
+  h1 { font-size: 1.3rem; margin-bottom: 0.2rem; }
+  .sub { color: #888; margin-bottom: 1.5rem; font-size: 0.9rem; }
+  fieldset { border: 1px solid #8884; border-radius: 8px; padding: 1rem; margin-bottom: 1.5rem; }
+  legend { font-weight: 600; padding: 0 0.4rem; }
+  label { display: block; margin: 0.5rem 0 0.2rem; font-size: 0.85rem; }
+  input, select, textarea, button { font: inherit; padding: 0.4rem; border-radius: 6px; border: 1px solid #8886; width: 100%; box-sizing: border-box; }
+  button { cursor: pointer; font-weight: 600; margin-top: 0.8rem; width: auto; padding: 0.5rem 1.2rem; }
+  button.small { font-weight: 400; padding: 0.3rem 0.7rem; margin-top: 0; }
+  .row { display: flex; gap: 1rem; }
+  .row > div { flex: 1; }
+  #status { font-size: 0.85rem; color: #888; min-height: 1.2em; margin-top: 0.4rem; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+  th, td { text-align: left; padding: 0.4rem; border-bottom: 1px solid #8883; vertical-align: top; }
+  th { color: #888; font-weight: 500; }
+  .content { max-width: 260px; word-break: break-word; }
+  .live-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #888; margin-right: 0.4rem; }
+  .live-dot.on { background: #2ecc71; }
+  .expired { opacity: 0.4; text-decoration: line-through; }
+  code { font-size: 0.8em; }
+</style>
+</head>
+<body>
+
+<h1>Agent Memory Mesh</h1>
+<div class="sub">Identity: ENSv2 (Sepolia) &middot; Content: Swarm (encrypted) &middot; Index: Arkiv (Tiramisu, expiring)</div>
+
+<fieldset>
+  <legend>Write a memory</legend>
+  <div class="row">
+    <div>
+      <label>Agent</label>
+      <select id="agentId">
+        <option value="atlas">atlas (atlas-ethrome26.eth)</option>
+        <option value="nova">nova (nova-ethrome26.eth)</option>
+      </select>
+    </div>
+    <div>
+      <label>Memory type</label>
+      <select id="memoryType">
+        <option>preference</option>
+        <option>fact</option>
+        <option>task</option>
+        <option>event</option>
+      </select>
+    </div>
+  </div>
+  <div class="row">
+    <div>
+      <label>Tag</label>
+      <input id="tag" value="ui">
+    </div>
+    <div>
+      <label>Importance (0-10)</label>
+      <input id="importance" type="number" min="0" max="10" value="7">
+    </div>
+    <div>
+      <label>Lifetime (blocks, ~2s each on Tiramisu)</label>
+      <input id="ttlBlocks" type="number" min="1" value="600">
+    </div>
+  </div>
+  <label>What the agent remembers</label>
+  <textarea id="content" rows="2">the user prefers dark mode and 24-hour time</textarea>
+  <button id="writeBtn">Write memory</button>
+  <div id="status"></div>
+</fieldset>
+
+<fieldset>
+  <legend><span id="liveDot" class="live-dot"></span>Live feed — updates with no refresh when any agent writes</legend>
+  <table>
+    <thead><tr><th>agent</th><th>type</th><th>tag</th><th>imp.</th><th>content</th><th>expires (block)</th></tr></thead>
+    <tbody id="liveRows"></tbody>
+  </table>
+</fieldset>
+
+<fieldset>
+  <legend>Query — compound filter, run it before/after a short-lived memory expires</legend>
+  <div class="row">
+    <div><label>Agent</label><input id="qAgentId" value="atlas"></div>
+    <div><label>Min importance</label><input id="qMinImportance" type="number" value="0"></div>
+    <button id="queryBtn" class="small" style="align-self:flex-end">Run query</button>
+  </div>
+  <table>
+    <thead><tr><th>tag</th><th>imp.</th><th>content</th><th>expires (block)</th></tr></thead>
+    <tbody id="queryRows"></tbody>
+  </table>
+</fieldset>
+
+<script>
+const $ = (id) => document.getElementById(id)
+
+$('writeBtn').onclick = async () => {
+  $('status').textContent = 'writing...'
+  try {
+    const body = {
+      agentId: $('agentId').value,
+      memoryType: $('memoryType').value,
+      tag: $('tag').value,
+      importance: Number($('importance').value),
+      content: { note: $('content').value },
+      ttlBlocks: Number($('ttlBlocks').value),
+    }
+    const res = await fetch('/api/memory', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+    const data = await res.json()
+    if (!res.ok) throw new Error(data.error || res.statusText)
+    $('status').textContent = `written: entity ${data.entityKey.slice(0, 14)}... tx ${data.txHash.slice(0, 14)}... requested ${data.requestedTtlBlocks} blocks, applied expiry block ${data.appliedExpiresAt}`
+  } catch (e) {
+    $('status').textContent = 'FAILED: ' + e.message
+  }
+}
+
+function renderRow(a, content) {
+  const tr = document.createElement('tr')
+  const contentText = content?.error ? content.error : (content?.note ?? JSON.stringify(content))
+  tr.innerHTML = `<td>${a.agent_id ?? ''}</td><td>${a.memory_type ?? ''}</td><td>${a.tag ?? ''}</td><td>${a.importance ?? ''}</td><td class="content">${contentText}</td><td>${a.__expiresAt ?? ''}</td>`
+  return tr
+}
+
+// Live feed — this is the whole point: a websocket push, no polling, no refresh.
+const proto = location.protocol === 'https:' ? 'wss' : 'ws'
+const ws = new WebSocket(`${proto}://${location.host}/live`)
+ws.onopen = () => { $('liveDot').classList.add('on') }
+ws.onclose = () => { $('liveDot').classList.remove('on') }
+ws.onmessage = (ev) => {
+  const msg = JSON.parse(ev.data)
+  if (msg.type !== 'memory') return
+  const row = renderRow({ ...msg.attributes, __expiresAt: msg.expiresAt }, msg.content)
+  $('liveRows').prepend(row)
+}
+
+$('queryBtn').onclick = async () => {
+  const params = new URLSearchParams({ agentId: $('qAgentId').value, minImportance: $('qMinImportance').value })
+  const res = await fetch('/api/query?' + params)
+  const rows = await res.json()
+  const head = await (await fetch('/api/head')).json()
+  $('queryRows').innerHTML = ''
+  for (const r of rows) {
+    const tr = document.createElement('tr')
+    const expired = BigInt(r.expiresAt) <= BigInt(head.head)
+    if (expired) tr.className = 'expired'
+    const contentText = r.content?.error ? r.content.error : (r.content?.note ?? JSON.stringify(r.content))
+    tr.innerHTML = `<td>${r.attributes.tag ?? ''}</td><td>${r.attributes.importance ?? ''}</td><td class="content">${contentText}</td><td>${r.expiresAt}${expired ? ' (expired, head=' + head.head + ')' : ''}</td>`
+    $('queryRows').appendChild(tr)
+  }
+  if (!rows.length) $('queryRows').innerHTML = '<tr><td colspan="4">no rows — either nothing matches, or everything that did has expired</td></tr>'
+}
+</script>
+</body>
+</html>

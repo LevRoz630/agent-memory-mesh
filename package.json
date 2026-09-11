@@ -9,6 +9,6 @@
     "@arkiv-network/sdk": "^0.8.0",
     "viem": "^2.56.3",
     "ws": "^8.21.3",
-    "@snaha/swarm-id": "latest"
+    "express": "^4.21.0"
   }
 }

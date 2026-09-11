@@ -35,10 +35,9 @@ export function makeClients({ privateKey, httpUrl, wsUrl }) {
   const pub = createPublicClient({ chain: tiramisu, transport: http(httpUrl, { cacheTime: 0 }) })
   const wallet = createWalletClient({ account, chain: tiramisu, transport: http(httpUrl, { cacheTime: 0 }) })
   // A SEPARATE websocket client for watchEntityEvents — sharing the HTTP client's transport
-  // would not open a real subscription. wsUrl only needed by callers that watch.
-  const wsClient = wsUrl
-    ? createPublicClient({ chain: tiramisu, transport: webSocket(wsUrl) })
-    : null
+  // would not open a real subscription. tiramisu ships a default webSocket() RPC URL, so
+  // wsUrl needs no explicit value (verified in pre-flight).
+  const wsClient = createPublicClient({ chain: tiramisu, transport: webSocket(wsUrl) })
   return { account, pub, wallet, wsClient }
 }
 
@@ -106,7 +105,7 @@ export async function queryMemories(pub, { agentId, memoryType, minImportance, t
  */
 export function watchMemories(wsClient, pub, onMemory, onError) {
   return wsClient.watchEntityEvents({
-    onEntityCreated: async ({ entityKey, owner }) => {
+    onEntityCreated: async ({ entityKey, owner, expiresAt }) => {
       // The event carries no attributes — this bounded follow-up read is what actually
       // fetches them. `owner` above is the only pre-read filter available; real
       // attribute-based filtering happens after this read, on the fetched entity.
@@ -114,7 +113,7 @@ export function watchMemories(wsClient, pub, onMemory, onError) {
         const entity = await pub.getEntity(entityKey)
         const raw = entity.attributes ?? {}
         if (!(ATTR.agentId in raw)) return // not an agent_memory entity — irrelevant, skip silently
-        onMemory({ entityKey, owner, attributes: unwrapAttributes(raw) })
+        onMemory({ entityKey, owner, expiresAt, attributes: unwrapAttributes(raw) })
       } catch {
         // Expired/deleted between the event firing and this read, or a transient RPC error.
         // Not fatal to the watcher — skip this one entity and keep watching.
