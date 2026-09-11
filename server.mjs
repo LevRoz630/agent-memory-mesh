@@ -1,18 +1,14 @@
-// The whole product, one server: write memories, query them, and push live updates over a
-// websocket as they're written elsewhere — the Mission 03 / two-panel demo artifact.
-//
-// The private key never leaves this process. The browser never sees it, never signs
-// anything, never talks to Arkiv or Swarm directly — it talks to this server, which does.
+// Local dev entrypoint: the shared REST app (src/app.mjs) plus a real websocket push on
+// top — this is the Mission 03 artifact. The Vercel deployment (api/index.mjs) uses the
+// same REST app without this layer, since serverless functions can't hold a persistent
+// websocket server; see src/app.mjs's header comment.
 
-import express from 'express'
-import { WebSocketServer } from 'ws'
 import { createServer } from 'node:http'
-import { fileURLToPath } from 'node:url'
-import { dirname, join } from 'node:path'
-import { makeClients, queryMemories, watchMemories } from './src/arkiv.mjs'
-import { writeMemory, readMemoryContent } from './src/memory.mjs'
+import { WebSocketServer } from 'ws'
+import { createApp } from './src/app.mjs'
+import { makeClients, watchMemories } from './src/arkiv.mjs'
+import { readMemoryContent } from './src/memory.mjs'
 
-const __dirname = dirname(fileURLToPath(import.meta.url))
 const PORT = process.env.PORT || 3000
 
 const privateKey = process.env.ARKIV_PRIVATE_KEY
@@ -24,62 +20,7 @@ if (!privateKey) {
 const { account, pub, wallet, wsClient } = makeClients({ privateKey })
 console.log(`Arkiv account: ${account.address}`)
 
-function serializeAttrs(a) {
-  return Object.fromEntries(Object.entries(a ?? {}).map(([k, v]) => [k, typeof v === 'bigint' ? v.toString() : v]))
-}
-
-async function withContent(entity) {
-  let content = null
-  try {
-    content = await readMemoryContent(entity.attributes)
-  } catch (e) {
-    content = { error: `content unavailable: ${e.message}` }
-  }
-  return { key: entity.key, expiresAt: String(entity.expiresAt), attributes: serializeAttrs(entity.attributes), content }
-}
-
-const app = express()
-app.use(express.json())
-app.use(express.static(join(__dirname, 'public')))
-
-app.post('/api/memory', async (req, res) => {
-  try {
-    const { agentId, memoryType, tag, importance, content, ttlBlocks } = req.body
-    if (!agentId || !memoryType || !tag || importance === undefined || !content || !ttlBlocks) {
-      return res.status(400).json({ error: 'agentId, memoryType, tag, importance, content, ttlBlocks are all required' })
-    }
-    const result = await writeMemory(wallet, {
-      agentId, memoryType, tag, importance: Number(importance), content, ttlBlocks: Number(ttlBlocks),
-    })
-    res.json({ ...result, appliedExpiresAt: result.appliedExpiresAt.toString() })
-  } catch (e) {
-    console.error('write failed:', e)
-    res.status(500).json({ error: e.message })
-  }
-})
-
-app.get('/api/query', async (req, res) => {
-  try {
-    const { agentId, memoryType, minImportance, tagPrefix } = req.query
-    if (!agentId) return res.status(400).json({ error: 'agentId is required' })
-    const entities = await queryMemories(pub, {
-      agentId,
-      memoryType: memoryType || undefined,
-      minImportance: minImportance !== undefined ? Number(minImportance) : undefined,
-      tagPrefix: tagPrefix || undefined,
-    })
-    res.json(await Promise.all(entities.map(withContent)))
-  } catch (e) {
-    console.error('query failed:', e)
-    res.status(500).json({ error: e.message })
-  }
-})
-
-app.get('/api/head', async (_req, res) => {
-  const head = await pub.getBlockNumber()
-  res.json({ head: head.toString() })
-})
-
+const app = createApp({ pub, wallet })
 const httpServer = createServer(app)
 const wss = new WebSocketServer({ server: httpServer, path: '/live' })
 
@@ -112,7 +53,11 @@ watchMemories(
       content = { error: `content unavailable: ${e.message}` }
     }
     console.log(`live: agent_memory written by ${owner}, key=${entityKey}`)
-    broadcast({ type: 'memory', key: entityKey, owner, expiresAt: String(expiresAt), attributes: serializeAttrs(attributes), content })
+    broadcast({
+      type: 'memory', key: entityKey, owner, expiresAt: String(expiresAt),
+      attributes: Object.fromEntries(Object.entries(attributes).map(([k, v]) => [k, typeof v === 'bigint' ? v.toString() : v])),
+      content,
+    })
   },
   (err) => {
     console.error('watch error:', err.message)

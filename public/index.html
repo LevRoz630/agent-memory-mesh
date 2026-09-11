@@ -124,16 +124,52 @@ function renderRow(a, content) {
   return tr
 }
 
-// Live feed — this is the whole point: a websocket push, no polling, no refresh.
-const proto = location.protocol === 'https:' ? 'wss' : 'ws'
-const ws = new WebSocket(`${proto}://${location.host}/live`)
-ws.onopen = () => { $('liveDot').classList.add('on') }
-ws.onclose = () => { $('liveDot').classList.remove('on') }
-ws.onmessage = (ev) => {
-  const msg = JSON.parse(ev.data)
-  if (msg.type !== 'memory') return
-  const row = renderRow({ ...msg.attributes, __expiresAt: msg.expiresAt }, msg.content)
+// Live feed. Real mechanism: a websocket push, no polling, no refresh — this is what
+// runs locally (server.mjs) and is the actual Mission 03 artifact (see EVIDENCE.md).
+// A serverless deployment (Vercel) can't hold a persistent websocket server, so if the
+// socket never connects, this falls back to polling /api/recent — still real data, just
+// not a subscription. The badge below says which one is actually running.
+const seenKeys = new Set()
+function addLiveRow(attrs, content, expiresAt, key) {
+  if (key) {
+    if (seenKeys.has(key)) return
+    seenKeys.add(key)
+  }
+  const row = renderRow({ ...attrs, __expiresAt: expiresAt }, content)
   $('liveRows').prepend(row)
+}
+
+let usingFallback = false
+function startPollingFallback() {
+  if (usingFallback) return
+  usingFallback = true
+  $('liveDot').classList.add('on')
+  $('liveDot').title = 'polling /api/recent (no persistent websocket on this deployment)'
+  async function poll() {
+    try {
+      const rows = await (await fetch('/api/recent')).json()
+      for (const r of rows) addLiveRow(r.attributes, r.content, r.expiresAt, r.key)
+    } catch {}
+  }
+  poll()
+  setInterval(poll, 3000)
+}
+
+const proto = location.protocol === 'https:' ? 'wss' : 'ws'
+let ws
+try {
+  ws = new WebSocket(`${proto}://${location.host}/live`)
+  const connectTimeout = setTimeout(startPollingFallback, 2500)
+  ws.onopen = () => { clearTimeout(connectTimeout); $('liveDot').classList.add('on'); $('liveDot').title = 'live websocket subscription' }
+  ws.onclose = () => { $('liveDot').classList.remove('on'); startPollingFallback() }
+  ws.onerror = () => startPollingFallback()
+  ws.onmessage = (ev) => {
+    const msg = JSON.parse(ev.data)
+    if (msg.type !== 'memory') return
+    addLiveRow(msg.attributes, msg.content, msg.expiresAt, msg.key)
+  }
+} catch {
+  startPollingFallback()
 }
 
 $('queryBtn').onclick = async () => {

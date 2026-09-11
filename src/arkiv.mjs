@@ -18,7 +18,7 @@
 
 import { createPublicClient, createWalletClient, ExpirationTime, str, u64, stringToPayload } from '@arkiv-network/sdk'
 import { tiramisu } from '@arkiv-network/sdk/chains'
-import { and, eq, gte, startsWith } from '@arkiv-network/sdk/query'
+import { and, eq, gte, or, startsWith } from '@arkiv-network/sdk/query'
 import { http, webSocket } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 
@@ -87,6 +87,21 @@ export async function queryMemories(pub, { agentId, memoryType, minImportance, t
   if (tagPrefix) clauses.push(startsWith(ATTR.tag, str(tagPrefix)))
 
   const pred = clauses.length === 1 ? clauses[0] : and(...clauses)
+  const result = await pub.select('*').where(pred).limit(limit).fetch()
+  const entities = Array.isArray(result) ? result : (result?.entities ?? [])
+  return entities.map((e) => ({ ...e, attributes: unwrapAttributes(e.attributes) }))
+}
+
+/**
+ * Recent memories across a fixed small set of known agents — used by the polling fallback
+ * for contexts that can't hold a real websocket subscription (serverless deployments).
+ * Arkiv requires at least one predicate on every query (no "match everything" spelling),
+ * hence the OR across known agent ids rather than an unfiltered scan.
+ */
+export async function queryRecent(pub, { agentIds = ['atlas', 'nova'], limit = 20 } = {}) {
+  const pred = agentIds.length === 1
+    ? eq(ATTR.agentId, str(agentIds[0]))
+    : or(...agentIds.map((id) => eq(ATTR.agentId, str(id))))
   const result = await pub.select('*').where(pred).limit(limit).fetch()
   const entities = Array.isArray(result) ? result : (result?.entities ?? [])
   return entities.map((e) => ({ ...e, attributes: unwrapAttributes(e.attributes) }))
