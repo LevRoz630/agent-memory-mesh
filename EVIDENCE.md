@@ -1,5 +1,9 @@
 # Evidence log
 
+Filled in as things happen, not reconstructed after the fact. Used for the ETHRome
+submission form and Arkiv's Tally form, both of which ask for exact addresses and
+transaction links, not a claim that something works.
+
 ## Public deployment
 
 **`https://agent-memory-mesh.vercel.app`** — permanent, deployed under the project owner's
@@ -10,7 +14,7 @@ One gotcha worth recording: the deployment-hash URL Vercel prints after `vercel 
 (`agent-memory-mesh-<hash>-leviticus.vercel.app`) returns a 302 to Vercel's own SSO login —
 Deployment Protection is on by default for team/personal-account deployments. The stable
 project-alias URL above (`agent-memory-mesh.vercel.app`, no hash, assigned automatically on
-first production deploy) is **not** behind that wall and is the one to actually share.
+first production deploy) is **not** behind that wall and is the one to share.
 
 To redeploy: `vercel deploy --yes -e ARKIV_PRIVATE_KEY=... -e MEMORY_ENC_KEY=...` from the
 repo root (drop `--yes` if you want the interactive prompts). Before the login, an
@@ -25,11 +29,6 @@ Getting a working deploy at all took two real fixes, both confirmed via
    and creates a `WebSocketServer`, neither valid inside a serverless function invocation.
    Fixed with `"framework": null` in `vercel.json`.
 2. The deployment-hash URL's SSO wall, above.
-
-
-Filled in as things actually happen, not reconstructed after the fact. Used for the
-ETHRome submission form and Arkiv's Tally form, both of which ask for exact addresses and
-transaction links, not a claim that something works.
 
 ## ENS — ENSv2 beta, Sepolia
 

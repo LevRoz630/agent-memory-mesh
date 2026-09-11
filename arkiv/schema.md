@@ -3,12 +3,12 @@
 ## Why Arkiv
 
 An AI agent's memory needs to be findable by kind, topic and salience — not fetched by a
-single id — and needs to genuinely disappear when it's no longer relevant, without a
-cleanup job somewhere babysitting it. A Postgres table with a `WHERE expires_at > now()`
-clause fakes the second half: the row is still there, still costs a read, still needs a
-scheduled DELETE to actually go away. Arkiv's native entity expiry does the second half for
-real — the row stops matching queries on its own, and a `deleteEntity` call never appears
-in this codebase.
+single id — and needs to disappear when it's no longer relevant, without a cleanup job
+somewhere babysitting it. A Postgres table with a `WHERE expires_at > now()` clause fakes
+the second half: the row is still there, still costs a read, still needs a scheduled
+DELETE to go away. Arkiv's native entity expiry does the second half for real — the row
+stops matching queries on its own, and a `deleteEntity` call never appears in this
+codebase.
 
 The trade-off this schema makes explicit: only the pointer and the filterable metadata go
 on Arkiv. The memory's actual content is bulk, unstructured, and does not need a query
@@ -51,7 +51,7 @@ boundary returns a different row count — that difference is the evidence, not 
 recording of a countdown timer.
 
 `createEntity`'s returned `expiresAt` is a lower bound for `fromBlocks()` — the engine
-resolves the duration against whichever block the transaction actually lands in, so the
+resolves the duration against whichever block the transaction lands in, so the
 requested block count and the applied expiry height are recorded separately (see
 `src/arkiv.mjs`, `createMemory`) rather than assumed equal.
 
@@ -87,15 +87,15 @@ Both are reproducible via `src/arkiv.mjs`'s `queryMemories()`.
 `watchEntityEvents` events carry change metadata only (`entityKey`, `owner`, `expiresAt`)
 — never attributes or payload (confirmed against the SDK's shipped source, not just its
 docs: `node_modules/@arkiv-network/sdk/src/actions/public/watchEntityEvents.ts`). This
-schema's write path therefore does a bounded follow-up `getEntity` read per event to
-actually fetch `agent_id` / `memory_type` / `swarm_ref`, and skips (does not surface as an
+schema's write path therefore does a bounded follow-up `getEntity` read per event to fetch
+`agent_id` / `memory_type` / `swarm_ref`, and skips (does not surface as an
 error) any event whose entity isn't one of this schema's — that's how an irrelevant chain
 event is demonstrated *not* updating the UI. See `src/arkiv.mjs`, `watchMemories()`.
 
 ## Lifetime extension — deliberately not used
 
-`extendEntity` is not called anywhere in this schema. Working memory is meant to genuinely
-lapse, not be renewed — extending it on activity would defeat the "built to expire"
+`extendEntity` is not called anywhere in this schema. Working memory is meant to lapse,
+not be renewed — extending it on activity would defeat the "built to expire"
 mechanic this schema exists to demonstrate. (For reference: extension SETS a new expiry
 from now rather than adding to the current one, and the engine rejects an extension that
 would not move the expiry later — verified in pre-flight, 7/7 live checks.) A future,

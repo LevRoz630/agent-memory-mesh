@@ -5,10 +5,10 @@
 An AI agent's memory is a typed, queryable, self-expiring index on Arkiv, with the actual
 content stored portably and content-addressed on Swarm, under an ENSv2 subname identity —
 so when one agent writes a memory, any other agent or app holding that identity can see it
-update live, and short-term memory genuinely disappears from queries when it's supposed to,
-instead of living forever in someone's database.
+update live, and short-term memory disappears from queries when it's supposed to, instead
+of living forever in someone's database.
 
-Maps directly onto language each sponsor used unprompted in their own brief: Swarm's
+Maps onto language each sponsor used unprompted in their own brief: Swarm's
 "portable AI memory that moves between assistants," ENS's "profiles for AI agents inside
 an agent controlled namespace," Arkiv's own "extend on activity" / "let an entity lapse"
 patterns.
@@ -17,7 +17,7 @@ patterns.
 
 - **Arkiv** — Mission 02 (Built to expire), Mission 03 (Live wire), Best Use overall.
   **Skip Mission 01** — no pre-existing indexer exists to decommission; inventing one to
-  turn off is explicitly against the brief's own guidance.
+  turn off is against the brief's own guidance.
 - **Swarm** — real upload/retrieval via Swarm ID (gateway, no Bee node).
 - **ENS** — ENSv2 beta on Sepolia, subname = agent identity, resolver = agent profile.
 - **Team1 — not pursued.** Wrong network (Fuji/Avalanche) for this product; forcing it in
@@ -68,8 +68,8 @@ Depth-of-integration story: **the subname is the identity**, not a lookup.
 
 **Known friction, front-load it:** registering a subname needs minting a test token,
 approving the registrar, then registering — three transactions before you have a name,
-and ENSv2's write flows are explicitly flagged by their own docs as "may still change
-before mainnet." This is the one leg with zero prior validated code. Do it **first**, so
+and ENSv2's write flows are flagged by their own docs as "may still change before
+mainnet." This is the one leg with zero prior validated code. Do it **first**, so
 any beta surprise is absorbed early rather than discovered later on the critical path.
 
 ## Cuts, in order, if time runs short
@@ -81,8 +81,8 @@ any beta surprise is absorbed early rather than discovered later on the critical
    "let it lapse" pattern for Mission 02. One pattern, well demonstrated, beats two half-done.
 3. Drop ENSv2 resolver depth (roles/delegation) — a single subname + one text record still
    qualifies ("does real work," "end-to-end on live testnet data"), it's just not maximal.
-4. If Swarm ID has rough edges, fall back to a plain gateway `fetch()` — the brief
-   explicitly allows this if you say why in the README.
+4. If Swarm ID has rough edges, fall back to a plain gateway `fetch()` — the brief allows
+   this if you say why in the README.
 5. Never cut: the live two-panel update (it's simultaneously Mission 03's exact ask and
    the whole product demo), and a public deployment of the app (Arkiv's own submission
    form asks for a deployment URL, not just a local demo).
@@ -110,7 +110,7 @@ judge's first ten seconds land.
 | — | ~~Expiry demo~~ **DONE** — `scripts/demo-expiry.mjs`, run live: 1 row before the boundary, 0 after, zero `deleteEntity` calls, requested/applied expiry recorded in `EVIDENCE.md` | moved up from the planned Sat 17:00–19:00 slot; Mission 02 |
 | — | ~~`friction.md`~~ **DONE**, written fresh with real findings from this session, not the pre-flight draft | moved up from the planned Sat 19:00–19:30 slot |
 | — | ~~Deploy publicly~~ **DONE** — live on Vercel (`--temporary`, see `EVIDENCE.md` for the URL and the real deploy failure it took to get there), REST verified end-to-end against the deployed URL | moved up from the planned Sat 19:30–21:00 slot |
-| Sat (whenever this actually lands) | Sleep, then: set ENS text records if time allows (currently blocked, see `friction.md`), redeploy/claim the Vercel deployment closer to Sunday since the temporary one expires, rehearse the demo | everything core is done a full day ahead of the original schedule — remaining time is genuinely slack, not catch-up |
+| Sat (whenever this lands) | Sleep, then: set ENS text records if time allows (currently blocked, see `friction.md`), redeploy/claim the Vercel deployment closer to Sunday since the temporary one expires, rehearse the demo | everything core is done a full day ahead of the original schedule — remaining time is slack, not catch-up |
 | Sun 09:00–09:45 | Full fresh end-to-end run-through against the deployed URL; record demo video (≤3 min, landscape, face on camera) — optional for Arkiv's own form but required for ETHRome's general submission | |
 | Sun 09:45–10:00 | Submit both forms: ETHRome Google Form (repo, video, contract addresses) and Arkiv's Tally form (repo, deployment URL, missions completed, creator wallet + entity keys/tx hashes, feedback.md link) | |
 | Sun 10:30 | Judging — walk Arkiv + Swarm mentors and general judges through it | |
@@ -126,7 +126,7 @@ mid-build — this supersedes the hacker-manual mission-page text above where th
 - **Public deployment required for Arkiv's own Tally form** — a deployment URL (their
   form suggests Vercel), not just a local demo. Video is optional *for that form* but
   still required for ETHRome's own general submission (Google Form).
-- **Mission 02 correction:** use block-based expiration explicitly
+- **Mission 02 correction:** use block-based expiration
   (`ExpirationTime.fromBlocks(n)`), and record the *requested* duration separately from
   the *applied* expiration height returned by the creation receipt — they can differ.
   Confirmed: Mission 02 does not itself require a websocket.
@@ -150,7 +150,7 @@ mid-build — this supersedes the hacker-manual mission-page text above where th
 ## Qualification checklists
 
 **Arkiv:** tick Arkiv + name missions · public repo · public deployment URL · `friction.md`
-(or `feedback.md`) linked directly · creator wallet + entity key/tx evidence.
+(or `feedback.md`) linked · creator wallet + entity key/tx evidence.
 
 **Swarm:** public repo (open license appreciated) · short README · a demo · one line on
 where you'd take it next.

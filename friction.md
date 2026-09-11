@@ -1,7 +1,7 @@
 # Arkiv feedback — Agent Memory Mesh
 
-Written live during the build, not reconstructed afterward. Covers only surfaces actually
-used: SDK, MCP/tools. Every finding below is reproducible against this repo's code.
+Written live during the build, not reconstructed afterward. Covers only surfaces used:
+SDK, MCP/tools. Every finding below is reproducible against this repo's code.
 
 Environment: `@arkiv-network/sdk@0.8.0`, `viem@2.56.3`, Node v22.23.2, chain Tiramisu
 `7738577` (`0x7614d1`).
@@ -50,7 +50,7 @@ Tried, in separate submissions, all rejected:
 - A markdown table under an `## Entities` heading
 
 All three are reasonable, readable ways to state "this is an entity type and its purpose,"
-and none tripped the recognizer. Other checks in the same tool clearly do work — adding a
+and none tripped the recognizer. Other checks in the same tool do work — adding a
 real query-builder code block moved `queryBuilderCalls` from 0 to 1 immediately, so the
 checker is doing real pattern matching, just not on a documented (or guessable) pattern for
 this one gate.
@@ -89,7 +89,7 @@ These held up under actual product use, not just a standalone probe:
   the same compound query, run before and after the expiry boundary, returns a different
   row count with no `deleteEntity` call anywhere in the codebase. `scripts/demo-expiry.mjs`
   is the reproduction.
-- **`watchEntityEvents` genuinely requires the `webSocket()` transport and no `fromBlock`**;
+- **`watchEntityEvents` requires the `webSocket()` transport and no `fromBlock`**;
   confirmed by building the actual live feature on it (`src/arkiv.mjs`'s `watchMemories`,
   wired into `server.mjs`) rather than a standalone test — a real websocket push updates a
   real browser-facing feed with no polling loop anywhere in the server.

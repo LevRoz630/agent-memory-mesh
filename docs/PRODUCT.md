@@ -63,7 +63,7 @@ READ PATH (live)
     -> bounded follow-up getEntity read on the entity key to fetch swarm_ref etc.
     -> fetches + decrypts the content from Swarm
     -> renders it
-  (an irrelevant event must NOT trigger this chain — demo that explicitly)
+  (an irrelevant event must NOT trigger this chain — demo that)
 
 READ PATH (queried)
   compound filter over Arkiv attributes, e.g.:
@@ -80,7 +80,7 @@ EXPIRY
 
 **What it holds.** Metadata only: which agent, what kind of memory, a tag, a numeric
 importance, a pointer to the Swarm content, and a native expiry. Never the memory content
-itself — that's the split Arkiv's own brief asks projects to reason about explicitly
+itself — that's the split Arkiv's own brief asks projects to reason about
 ("what went in attributes, what stayed in the payload, and why").
 
 **Schema.**
@@ -126,8 +126,8 @@ or a blob; that's what `swarm_ref` points at instead.
 and after the expiry boundary returns a different row count, no delete call in the trace.
 Mission 03 (`Live wire`) is the cross-panel update: a websocket subscription with no
 `fromBlock`, demonstrated live with two screens. Mission 01 is not attempted — there is no
-pre-existing indexer this product replaces, and inventing one to decommission is explicitly
-against the brief.
+pre-existing indexer this product replaces, and inventing one to decommission is against
+the brief.
 
 ## Component 2 — Swarm (content)
 
@@ -171,7 +171,7 @@ rather than late.
 **Hard cap: 60 minutes.** If registration is not working by then, drop ENS and ship
 Arkiv + Swarm only. See `build-plan.md` for the schedule this sits inside.
 
-## Demo script, mapped to what each judge is actually checking
+## Demo script, mapped to what each judge is checking
 
 1. State what this is in one sentence — memory as identity + content + index, three
    different systems, none of which does the others' job.
