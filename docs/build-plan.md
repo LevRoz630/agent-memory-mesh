@@ -84,8 +84,8 @@ any beta surprise is absorbed early rather than discovered later on the critical
 4. If Swarm ID has rough edges, fall back to a plain gateway `fetch()` — the brief
    explicitly allows this if you say why in the README.
 5. Never cut: the live two-panel update (it's simultaneously Mission 03's exact ask and
-   the whole product demo), and the Saturday 20:00 Arkiv conversation (hard deadline,
-   cannot move to Sunday).
+   the whole product demo), and a public deployment of the app (Arkiv's own submission
+   form asks for a deployment URL, not just a local demo).
 
 ## Demo content
 
@@ -110,18 +110,48 @@ judge's first ten seconds land.
 | Sat 14:00–17:00 | **Live subscription leg** — websocket watcher, no `fromBlock`, second panel updates in real time | this *is* Mission 03 and the product demo, same artifact |
 | Sat 17:00–19:00 | Expiry demo — short-TTL memory, query before/after boundary, no delete call | Mission 02 |
 | Sat 19:00–19:30 | Bug buffer; write/date `friction.md` from what actually broke this weekend | |
-| **Sat 19:30–20:00** | **Mandatory 10-min Arkiv conversation, hand over repo URL** | hard deadline, cannot slip |
-| Sat 20:00–21:00 | Dinner | |
-| Sat 21:00–00:00 | README, compound-query demo, schema.md trade-off writeup, resolver polish | |
+| Sat 19:30–21:00 | **Deploy publicly** (Vercel) + polish: README, compound-query demo, schema.md trade-off writeup, resolver polish | Arkiv's own Tally form asks for a live deployment URL, not just a local demo — reclaimed from the old (stale) mandatory-conversation slot |
+| Sat 21:00–21:30 | Dinner | |
+| Sat 21:30–00:00 | Continue polish; record `feedback.md` observations as they happen, don't leave it to Sunday | |
 | Sat 00:00 | Sleep | |
-| Sun 09:00–09:45 | Full fresh end-to-end run-through; record demo video (≤3 min, landscape, face on camera) | |
-| Sun 09:45–10:00 | Submit: tick Arkiv (name M02+M03), Swarm, ENS; repo link, video link, Sepolia + Tiramisu addresses/tx links | |
+| Sun 09:00–09:45 | Full fresh end-to-end run-through against the deployed URL; record demo video (≤3 min, landscape, face on camera) — optional for Arkiv's own form but required for ETHRome's general submission | |
+| Sun 09:45–10:00 | Submit both forms: ETHRome Google Form (repo, video, contract addresses) and Arkiv's Tally form (repo, deployment URL, missions completed, creator wallet + entity keys/tx hashes, feedback.md link) | |
 | Sun 10:30 | Judging — walk Arkiv + Swarm mentors and general judges through it | |
 
-## Qualification checklists (from the live brief)
+## Corrected against `guides/ethrome-current` (queried live via the arkiv-ethrome MCP,
+mid-build — this supersedes the hacker-manual mission-page text above where they conflict)
 
-**Arkiv:** tick Arkiv + name missions · public repo · draft `/arkiv/schema.md` · `friction.md` ·
-10-min conversation by Sat 20:00.
+- **No mandatory Saturday conversation.** The current guidance explicitly says not to
+  restore "the compulsory Saturday conversation... old deadlines." Dropped from the
+  schedule above.
+- **No hard schema.md gate**, confirmed again — `arkiv/submission.md`/`schema.md` is
+  "useful project documentation," not a mandatory artifact.
+- **Public deployment required for Arkiv's own Tally form** — a deployment URL (their
+  form suggests Vercel), not just a local demo. Video is optional *for that form* but
+  still required for ETHRome's own general submission (Google Form).
+- **Mission 02 correction:** use block-based expiration explicitly
+  (`ExpirationTime.fromBlocks(n)`), and record the *requested* duration separately from
+  the *applied* expiration height returned by the creation receipt — they can differ.
+  Confirmed: Mission 02 does not itself require a websocket.
+- **Mission 03 correction, architecturally real:** the `watchEntityEvents` callback does
+  **not** carry entity attributes or payload — only change metadata (e.g. owner). Treat
+  that as an initial relevance filter only, then do a bounded follow-up `getEntity` read
+  to fetch the actual attributes (`swarmRef`, etc.). The write path in this doc's
+  architecture section needs that explicit read step added, not "receives the new entity"
+  as if attributes ride along with the event.
+- **Mission 03 demo, additional asks:** show an irrelevant change that does *not* trigger
+  a UI update (proves the filter is real, not just "something happened"), and test/record
+  disconnect + reconnect behavior, and stop the watcher on unmount.
+- **Evidence to prepare:** public Tiramisu creator-wallet address(es), entity keys mapped
+  to their creation transactions, and for Mission 02 both the requested and applied
+  expiration values from the receipt.
+- **Currency discrepancy, unresolved:** the hacker manual says the Arkiv pool is paid in
+  USDC; this MCP's guidance says "EUR 2,500." Ask Santiago directly, he's on-site now.
+
+## Qualification checklists
+
+**Arkiv:** tick Arkiv + name missions · public repo · public deployment URL · `friction.md`
+(or `feedback.md`) linked directly · creator wallet + entity key/tx evidence.
 
 **Swarm:** public repo (open license appreciated) · short README · a demo · one line on
 where you'd take it next.

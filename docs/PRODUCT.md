@@ -57,10 +57,13 @@ WRITE PATH
 READ PATH (live)
   second process/panel calls watchEntityEvents
     -> webSocket transport, no fromBlock
-    -> receives the new entity the moment it's written — no poll, no refresh
-    -> reads swarmRef off the entity
+    -> event fires the moment something is written — no poll, no refresh
+    -> the event itself carries change metadata only (e.g. owner), NOT attributes/payload
+    -> use that metadata as an initial relevance filter (not authentication)
+    -> bounded follow-up getEntity read on the entity key to fetch swarmRef etc.
     -> fetches + decrypts the content from Swarm
     -> renders it
+  (an irrelevant event must NOT trigger this chain — demo that explicitly)
 
 READ PATH (queried)
   compound filter over Arkiv attributes, e.g.:
@@ -178,7 +181,11 @@ Arkiv + Swarm only. See `build-plan.md` for the schedule this sits inside.
 4. Run a compound query live: `agentId = X AND memoryType = Y AND importance >= N`. This is
    what "query depth" means in Arkiv's rubric — not a lookup by id.
 5. Show a short-lived memory disappear from that same query with no delete call anywhere in
-   the code being shown. This is Mission 02.
+   the code being shown. This is Mission 02 — use block-based expiration
+   (`ExpirationTime.fromBlocks(n)`) and show both the requested duration and the applied
+   expiration height from the creation receipt, they can differ.
+5b. Show one irrelevant change that does *not* trigger Agent B's panel — proves the event
+   filter is real, not "something happened, refresh anyway."
 6. One line on the ENS subname: it's the identity, not a lookup — say what would break if
    it were just a wallet address instead.
 7. One line on why the content is on Swarm and not Arkiv: Arkiv is the index, not the
