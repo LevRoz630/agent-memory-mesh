@@ -66,6 +66,17 @@ export async function createMemory(wallet, { agentId, memoryType, tag, importanc
 }
 
 /**
+ * Attribute values come back from getEntity/select as typed wrapper objects,
+ * { type: 'str', value: 'atlas' } / { type: 'u64', value: 7n }, not plain values —
+ * confirmed empirically, asymmetric with the write path (which takes str()/u64()
+ * constructors going in but does not hand back the same shape coming out). Unwrap once
+ * here rather than making every caller know this.
+ */
+export function unwrapAttributes(attrs) {
+  return Object.fromEntries(Object.entries(attrs ?? {}).map(([k, v]) => [k, v?.value ?? v]))
+}
+
+/**
  * Compound query: agent_id = X AND memory_type = Y [AND importance >= minImportance]
  * [AND tag STARTSWITH tagPrefix]. This is the query-depth demo — real filters, not an id
  * lookup.
@@ -78,7 +89,8 @@ export async function queryMemories(pub, { agentId, memoryType, minImportance, t
 
   const pred = clauses.length === 1 ? clauses[0] : and(...clauses)
   const result = await pub.select('*').where(pred).limit(limit).fetch()
-  return Array.isArray(result) ? result : (result?.entities ?? [])
+  const entities = Array.isArray(result) ? result : (result?.entities ?? [])
+  return entities.map((e) => ({ ...e, attributes: unwrapAttributes(e.attributes) }))
 }
 
 /**
@@ -100,9 +112,9 @@ export function watchMemories(wsClient, pub, onMemory, onError) {
       // attribute-based filtering happens after this read, on the fetched entity.
       try {
         const entity = await pub.getEntity(entityKey)
-        const a = entity.attributes ?? {}
-        if (!(ATTR.agentId in a)) return // not an agent_memory entity — irrelevant, skip silently
-        onMemory({ entityKey, owner, attributes: a })
+        const raw = entity.attributes ?? {}
+        if (!(ATTR.agentId in raw)) return // not an agent_memory entity — irrelevant, skip silently
+        onMemory({ entityKey, owner, attributes: unwrapAttributes(raw) })
       } catch {
         // Expired/deleted between the event firing and this read, or a transient RPC error.
         // Not fatal to the watcher — skip this one entity and keep watching.
