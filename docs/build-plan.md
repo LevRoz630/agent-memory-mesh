@@ -29,13 +29,13 @@ patterns.
 Agent writes a memory
   → encrypt content
   → upload to Swarm (Swarm ID, gateway, no stamp/Bee node) → get content ref
-  → create Arkiv entity: { agentId, memoryType, tag, importance, swarmRef, $expiresAt }
+  → create Arkiv entity: { agent_id, memory_type, tag, importance, swarm_ref, $expiresAt }
   → (short-lived memories: $expiresAt ~60-90s for the demo)
 
 Second panel / process (the other "agent")
   → watchEntityEvents(webSocket transport, NO fromBlock)
   → sees the new entity the instant it's written, no refresh, no polling
-  → resolves swarmRef, fetches + decrypts from Swarm
+  → resolves swarm_ref, fetches + decrypts from Swarm
   → renders it
 ```
 
@@ -50,15 +50,15 @@ Entity type `agent_memory`:
 
 | Attribute | Type | Purpose |
 |---|---|---|
-| `agentId` | str | which agent identity (matches the ENS subname label) |
-| `memoryType` | str | `fact` \| `task` \| `preference` \| `event` |
+| `agent_id` | str | which agent identity (matches the ENS subname label) |
+| `memory_type` | str | `fact` \| `task` \| `preference` \| `event` |
 | `tag` | str | short topic/category string |
 | `importance` | u64 | 0–10 salience, enables range queries |
-| `swarmRef` | str | Swarm content hash — the pointer, not the content |
+| `swarm_ref` | str | Swarm content hash — the pointer, not the content |
 | `$expiresAt` | native | TTL; short for "working memory," extended for anything durable |
 
 Demo queries for the judging session (compound, not id lookup):
-`agentId=X AND memoryType=Y AND importance>=N`, `agentId=X AND tag startsWith 'proj'`.
+`agent_id=X AND memory_type=Y AND importance>=N`, `agent_id=X AND tag startsWith 'proj'`.
 
 ### ENSv2 leg
 
@@ -90,7 +90,7 @@ any beta surprise is absorbed early rather than discovered later on the critical
 ## Demo content
 
 Make the demo memories concrete and human-legible, not abstract placeholders. Not
-`{memoryType: "fact", tag: "x"}` — something like an agent remembering a specific user
+`{memory_type: "fact", tag: "x"}` — something like an agent remembering a specific user
 preference or a specific task detail that a viewer immediately understands the value of
 losing/keeping. Costs nothing, keeps every mechanic identical, makes the cold 3-minute
 judge's first ten seconds land.
@@ -136,7 +136,7 @@ mid-build — this supersedes the hacker-manual mission-page text above where th
 - **Mission 03 correction, architecturally real:** the `watchEntityEvents` callback does
   **not** carry entity attributes or payload — only change metadata (e.g. owner). Treat
   that as an initial relevance filter only, then do a bounded follow-up `getEntity` read
-  to fetch the actual attributes (`swarmRef`, etc.). The write path in this doc's
+  to fetch the actual attributes (`swarm_ref`, etc.). The write path in this doc's
   architecture section needs that explicit read step added, not "receives the new entity"
   as if attributes ride along with the event.
 - **Mission 03 demo, additional asks:** show an irrelevant change that does *not* trigger

@@ -52,7 +52,7 @@ WRITE PATH
     -> encrypt the content
     -> upload to Swarm (gateway, via Swarm ID — no Bee node run by this app)
     -> get back a content reference
-    -> create an Arkiv entity: { agentId, memoryType, tag, importance, swarmRef, $expiresAt }
+    -> create an Arkiv entity: { agent_id, memory_type, tag, importance, swarm_ref, $expiresAt }
 
 READ PATH (live)
   second process/panel calls watchEntityEvents
@@ -60,15 +60,15 @@ READ PATH (live)
     -> event fires the moment something is written — no poll, no refresh
     -> the event itself carries change metadata only (e.g. owner), NOT attributes/payload
     -> use that metadata as an initial relevance filter (not authentication)
-    -> bounded follow-up getEntity read on the entity key to fetch swarmRef etc.
+    -> bounded follow-up getEntity read on the entity key to fetch swarm_ref etc.
     -> fetches + decrypts the content from Swarm
     -> renders it
   (an irrelevant event must NOT trigger this chain — demo that explicitly)
 
 READ PATH (queried)
   compound filter over Arkiv attributes, e.g.:
-    agentId = "atlas" AND memoryType = "task" AND importance >= 7
-    agentId = "atlas" AND tag STARTSWITH "proj"
+    agent_id = "atlas" AND memory_type = "task" AND importance >= 7
+    agent_id = "atlas" AND tag STARTSWITH "proj"
 
 EXPIRY
   a memory's $expiresAt is set short for working/task memory
@@ -87,25 +87,26 @@ itself — that's the split Arkiv's own brief asks projects to reason about expl
 
 | Attribute | Type | Purpose |
 |---|---|---|
-| `agentId` | str | which agent wrote this |
-| `memoryType` | str | `fact` \| `task` \| `preference` \| `event` |
+| `agent_id` | str | which agent wrote this |
+| `memory_type` | str | `fact` \| `task` \| `preference` \| `event` |
 | `tag` | str | short topic string, supports `STARTSWITH` |
 | `importance` | u64 | 0–10, supports range filters |
-| `swarmRef` | str | pointer to the encrypted content on Swarm |
+| `swarm_ref` | str | pointer to the encrypted content on Swarm |
 | `$expiresAt` | native | the lease |
 
 **Why these attributes.** Each one earns its place by being something a query filters on.
-`agentId` narrows to one agent. `memoryType` and `tag` narrow by kind and topic.
+`agent_id` narrows to one agent. `memory_type` and `tag` narrow by kind and topic.
 `importance` supports a range query (`>= 7`), which is what makes a filter compound rather
 than a single equality lookup — the thing Arkiv's rubric rewards. Nothing here is free text
-or a blob; that's what `swarmRef` points at instead.
+or a blob; that's what `swarm_ref` points at instead.
 
 **Constraints already verified against the live Tiramisu node during pre-flight:**
 
-- Attribute names: lowercase, digits, `_`, `-`, `.` only. Uppercase is rejected by the
-  engine even though the SDK's client-side validator returns `true` for it. Do not name an
-  attribute `agentId` — it must be `agent_id` or similar. Confirm the exact accepted
-  spelling empirically before committing to names in code.
+- Attribute names: lowercase, digits, `_`, `-`, `.` only. Uppercase and camelCase are
+  rejected by the engine even though the SDK's client-side validator returns `true` for
+  them — this schema uses `agent_id`/`memory_type`/`swarm_ref`, not `agentId`/`memoryType`/
+  `swarmRef`, for exactly that reason. Confirm the exact accepted spelling empirically
+  before committing to any new attribute name.
 - Working operators: `=`, `<`, `<=`, `>`, `>=`, `STARTSWITH`, `AND`, `OR`, `NOT`. Rejected
   by the node despite being exported by the SDK: `!=`, `EXISTS()`, `TYPEOF()`. Negation
   goes through `NOT(eq(...))`.
@@ -178,7 +179,7 @@ Arkiv + Swarm only. See `build-plan.md` for the schedule this sits inside.
    Arkiv with `$expiresAt` set.
 3. Agent B's panel updates with no refresh. This is Arkiv Mission 03's literal demo ask —
    point at it, don't make the judges infer it.
-4. Run a compound query live: `agentId = X AND memoryType = Y AND importance >= N`. This is
+4. Run a compound query live: `agent_id = X AND memory_type = Y AND importance >= N`. This is
    what "query depth" means in Arkiv's rubric — not a lookup by id.
 5. Show a short-lived memory disappear from that same query with no delete call anywhere in
    the code being shown. This is Mission 02 — use block-based expiration

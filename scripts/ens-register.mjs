@@ -47,19 +47,26 @@ const ERC20_ABI = parseAbi([
   'function balanceOf(address account) view returns (uint256)',
 ])
 
-// Param types/order as documented; NOT yet verified against the deployed contract's
-// actual ABI. If this throws, read the revert reason and fix the signature here.
+// Verified 2026-09-11 against the deployed contract's actual ABI via Blockscout
+// (eth-sepolia.blockscout.com/api/v2/smart-contracts/<address>), not a doc-page summary —
+// the earlier doc-summary version had `duration` as uint256, which is wrong (uint64) and
+// produced a different selector, hence the first run's silent "execution reverted".
 const ETH_REGISTRAR_ABI = parseAbi([
   'function isAvailable(string label) view returns (bool)',
-  'function getRegisterPrice(string label, uint256 duration, address paymentToken) view returns (uint256 base, uint256 premium)',
-  'function makeCommitment(string label, address owner, bytes32 secret, address subregistry, address resolver, uint256 duration, bytes32 referrer) view returns (bytes32)',
+  'function getRegisterPrice(string label, uint64 duration, address paymentToken) view returns (uint256 base, uint256 premium)',
+  'function makeCommitment(string label, address owner, bytes32 secret, address subregistry, address resolver, uint64 duration, bytes32 referrer) view returns (bytes32)',
   'function commit(bytes32 commitment)',
-  'function register(string label, address owner, bytes32 secret, address subregistry, address resolver, uint256 duration, address paymentToken, bytes32 referrer)',
+  'function register(string label, address owner, bytes32 secret, address subregistry, address resolver, uint64 duration, address paymentToken, bytes32 referrer) returns (uint256 tokenId)',
 ])
 
+// Explicit RPC, not viem's default rotation — one of those endpoints hung indefinitely on
+// a live run (no error, no response) rather than failing fast. publicnode's Sepolia
+// endpoint answered eth_getBalance in well under a second when checked directly with curl.
+const RPC_URL = 'https://ethereum-sepolia-rpc.publicnode.com'
+
 const account = privateKeyToAccount(pk)
-const pub = createPublicClient({ chain: sepolia, transport: http() })
-const wallet = createWalletClient({ account, chain: sepolia, transport: http() })
+const pub = createPublicClient({ chain: sepolia, transport: http(RPC_URL) })
+const wallet = createWalletClient({ account, chain: sepolia, transport: http(RPC_URL) })
 
 console.log(`account   ${account.address}`)
 console.log(`label     ${LABEL}`)
