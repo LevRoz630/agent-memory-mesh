@@ -76,8 +76,8 @@ any beta surprise is absorbed early rather than discovered later on the critical
 a parent-plus-subname hierarchy — true subname creation needed deploying a custom
 subregistry contract, which didn't fit the cap. Both registered clean after fixing a wrong
 ABI (a doc summary had `duration` as `uint256`, the real contract takes `uint64`). Profile
-text records are blocked by a real `PublicResolverV2` limitation. Full detail in
-`docs/PRODUCT.md` Component 3 and `EVIDENCE.md`.
+text records are blocked by a real `PublicResolverV2` limitation — not attempted further,
+see the EV analysis below. Full detail in `docs/PRODUCT.md` Component 3 and `EVIDENCE.md`.
 
 ## Cuts, in order, if time runs short
 
@@ -117,7 +117,20 @@ judge's first ten seconds land.
 | — | ~~Expiry demo~~ **DONE** — `scripts/demo-expiry.mjs`, run live: 1 row before the boundary, 0 after, zero `deleteEntity` calls, requested/applied expiry recorded in `EVIDENCE.md` | moved up from the planned Sat 17:00–19:00 slot; Mission 02 |
 | — | ~~`friction.md`~~ **DONE**, written fresh with real findings from this session, not the pre-flight draft | moved up from the planned Sat 19:00–19:30 slot |
 | — | ~~Deploy publicly~~ **DONE** — live on Vercel (`--temporary`, see `EVIDENCE.md` for the URL and the real deploy failure it took to get there), REST verified end-to-end against the deployed URL | moved up from the planned Sat 19:30–21:00 slot |
-| Sat (whenever this lands) | Sleep, then: set ENS text records if time allows (currently blocked, see `friction.md`), redeploy/claim the Vercel deployment closer to Sunday since the temporary one expires, rehearse the demo | everything core is done a full day ahead of the original schedule — remaining time is slack, not catch-up |
+| Sat (whenever this lands) | Sleep, then: redeploy the Vercel production build once more right before Sunday's submission window, rehearse the demo, double-check the Arkiv/Swarm evidence is airtight — those are the two bounties with real money on them | everything core is done a full day ahead of the original schedule — remaining time is slack, not catch-up |
+
+**Decision on the ENS text record: skip it, deliberately.** Weighed via an EV analysis —
+deploying a custom resolver to fix it is a genuinely different kind of work (writing and
+deploying a Solidity contract, no toolchain installed yet, an unfamiliar registry
+interface) with a realistic 90-150 minute cost and real tail risk if the auth check is
+subtly wrong on the first try. Against that: the pool is $500 split up to five ways, and
+the marginal move from "diagnosed a real protocol-level authorization mismatch, confirmed
+on-chain" to "also has a working text record" is capped and speculative — arguably the
+diagnosis itself is the sharper signal of depth. The two bounties with actual money
+riding on them, Arkiv ($2,500) and Swarm ($1,000), are where re-verification time earns
+more, and the demo video/rehearsal is human-only, non-delegable, and matters across every
+prize line. Sharpened the write-up in `docs/PRODUCT.md` Component 3 instead — ~15 minutes,
+zero deployment risk.
 | Sun 09:00–09:45 | Full fresh end-to-end run-through against the deployed URL; record demo video (≤3 min, landscape, face on camera) — optional for Arkiv's own form but required for ETHRome's general submission | |
 | Sun 09:45–10:00 | Submit both forms: ETHRome Google Form (repo, video, contract addresses) and Arkiv's Tally form (repo, deployment URL, missions completed, creator wallet + entity keys/tx hashes, feedback.md link) | |
 | Sun 10:30 | Judging — walk Arkiv + Swarm mentors and general judges through it | |

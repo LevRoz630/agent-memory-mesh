@@ -175,10 +175,21 @@ given. Fixed by pulling the actual verified ABI from Blockscout instead of trust
 summary. Both names registered clean once that was fixed; see `EVIDENCE.md` for transaction
 hashes.
 
-**Setting a profile text record is blocked.** `PublicResolverV2`'s authorization check
-requires an entry in the ENSv1 NameWrapper, which is empty for a name registered natively
-through ENSv2's registrar — confirmed on-chain, not assumed. See `friction.md`. The
-registration itself already satisfies "does real work" / "end-to-end on live testnet data"
+**Setting a profile text record is blocked — a real architectural mismatch, confirmed
+on-chain, not assumed.** `TextResolver.setText()` is gated by an `authorised(node)`
+modifier, which calls `PublicResolverV2.isAuthorised()`, which calls `canModifyName()`.
+That function's first step is `NAME_WRAPPER.names(node)` — a lookup against the **ENSv1**
+NameWrapper contract — and returns `false` immediately if that's empty, before ever
+checking real ownership. Names registered natively through ENSv2's own `ETHRegistrar`
+never touch the v1 NameWrapper, so that lookup returns `0x` for both names here (checked
+directly: `NAME_WRAPPER.names(node)` → `0x`). `PublicResolverV2`'s authorization model
+assumes every name arrived via the v1-to-v2 bridge; a name that only ever existed in v2
+cannot satisfy it, for any caller, including the real owner. The other resolver in the
+Sepolia deployments table, `ENSV2Resolver`, turned out to be a read-only CCIP-read mirror
+that forwards lookups rather than storing writable records — not an alternative. The fix
+would be a custom resolver checking ownership against the ENSv2 registry directly; not
+attempted here, since the registration itself already satisfies "does real work" /
+"end-to-end on live testnet data"
 without this.
 
 ## Demo script, mapped to what each judge is checking

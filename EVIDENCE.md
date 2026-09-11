@@ -50,8 +50,9 @@ Contracts used (Sepolia ENSv2 beta, from `docs.ens.domains/learn/deployments`):
 registration).
 
 Still open: setting a text record on each name. Attempted and blocked by a real limitation
-in `PublicResolverV2` — see `friction.md` and the commit `87fe227` message for the
-on-chain-confirmed root cause. Registration itself already satisfies "does real work" /
+in `PublicResolverV2` — see `docs/PRODUCT.md` Component 3 for the on-chain-confirmed root
+cause (its `isAuthorised` check depends on the ENSv1 NameWrapper, empty for a name
+registered natively through ENSv2). Registration itself already satisfies "does real work" /
 "end-to-end on live testnet data" without this.
 
 ## Arkiv — Tiramisu
