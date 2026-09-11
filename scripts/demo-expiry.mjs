@@ -41,7 +41,6 @@ if (before.length === 0) {
 }
 
 console.log('\nwaiting for the chain to pass the expiry block (no delete call is made)...')
-let after = before
 let headNow = headBefore
 while (headNow <= BigInt(result.appliedExpiresAt)) {
   await new Promise((r) => setTimeout(r, 3000))
@@ -50,7 +49,7 @@ while (headNow <= BigInt(result.appliedExpiresAt)) {
 }
 console.log()
 
-after = await q()
+const after = await q()
 console.log(`\nAFTER expiry — same query returns ${after.length} row(s)`)
 
 console.log('\n' + '='.repeat(60))

@@ -7,8 +7,8 @@ presentation. Keep it updated as the build diverges from plan.
 
 An AI agent's memory, implemented as three separate concerns instead of one database:
 
-- **Identity** — an ENSv2 subname on Sepolia. The agent's name is not a display string,
-  it's the thing other systems resolve to find the agent.
+- **Identity** — an ENSv2 name on Sepolia. The agent's name is not a display string, it's
+  the thing other systems resolve to find the agent.
 - **Content** — encrypted, content-addressed blobs on Swarm. The actual memory: what the
   agent knows, what it was told, what it decided.
 - **Index** — typed, queryable, expiring records on Arkiv. Not the memory itself, a pointer
@@ -152,24 +152,34 @@ to make in the pitch.
 
 ## Component 3 — ENS (identity)
 
-**What it holds.** One parent name plus a subname per agent (e.g. `atlas.<parent>.eth`,
-`nova.<parent>.eth`), registered against the **ENSv2 beta deployment on Sepolia**, not v1.
-A resolver record on each subname carries a short profile string.
+**What it holds.** Two names, one per agent — `atlas-ethrome26.eth` and
+`nova-ethrome26.eth` — registered against the **ENSv2 beta deployment on Sepolia**, not v1.
+The original plan was one parent name plus a subname per agent
+(`atlas.<parent>.eth`); flat top-level names instead, because subname creation turned out
+to need deploying a custom subregistry contract (see the subregistry-lab pattern ENS's own
+bounty brief links), which didn't fit inside the 60-minute cap this leg was given. A
+registered ENSv2 name is still a real agent identity either way — the bounty asks for depth
+of integration, not a specific name shape.
 
-**Why a subname and not just a wallet address.** A wallet address identifies a signer. A
-subname identifies an agent that other systems can look up by name, independent of which
-key currently controls it — that's the "agent controlled namespace" ENS's own brief asks
-for, and it's what makes the agent's identity portable rather than tied to one wallet.
+**Why a name and not just a wallet address.** A wallet address identifies a signer. A name
+identifies an agent that other systems can look up, independent of which key currently
+controls it — that's the "agent controlled namespace" ENS's own brief asks for, and it's
+what makes the agent's identity portable rather than tied to one wallet.
 
-**Registration path, unverified before the event, beta-flagged by ENS's own docs**
-("write flows are ENSv2-specific, and their authorization details may still change before
-mainnet"): mint a test token, approve the registrar, register. Three transactions before
-the subname exists. This is the one component in this build with no prior validated code —
-register the demo subnames first, before any other work, so a beta surprise shows up early
-rather than late.
+**Registration path** (`scripts/ens-register.mjs`): mint a test token, approve the
+registrar, commit, wait for `MIN_COMMITMENT_AGE`, register. This was the one component in
+this build with no prior validated code, and it showed: the first attempt reverted because
+a doc-page summary had the registrar's `duration` parameter as `uint256` when the real
+deployed contract takes `uint64` — a different function selector, silent revert, no reason
+given. Fixed by pulling the actual verified ABI from Blockscout instead of trusting the
+summary. Both names registered clean once that was fixed; see `EVIDENCE.md` for transaction
+hashes.
 
-**Hard cap: 60 minutes.** If registration is not working by then, drop ENS and ship
-Arkiv + Swarm only. See `build-plan.md` for the schedule this sits inside.
+**Setting a profile text record is blocked.** `PublicResolverV2`'s authorization check
+requires an entry in the ENSv1 NameWrapper, which is empty for a name registered natively
+through ENSv2's registrar — confirmed on-chain, not assumed. See `friction.md`. The
+registration itself already satisfies "does real work" / "end-to-end on live testnet data"
+without this.
 
 ## Demo script, mapped to what each judge is checking
 
@@ -187,12 +197,11 @@ Arkiv + Swarm only. See `build-plan.md` for the schedule this sits inside.
    expiration height from the creation receipt, they can differ.
 5b. Show one irrelevant change that does *not* trigger Agent B's panel — proves the event
    filter is real, not "something happened, refresh anyway."
-6. One line on the ENS subname: it's the identity, not a lookup — say what would break if
+6. One line on the ENS name: it's the identity, not a lookup — say what would break if
    it were just a wallet address instead.
 7. One line on why the content is on Swarm and not Arkiv: Arkiv is the index, not the
-   place data lives — that's a direct quote from their own brief, and repeating it back to
-   them in the Saturday conversation is the answer to their "Arkiv fit and trade-offs"
-   criterion.
+   place data lives — that's a direct quote from their own brief, and it's the answer to
+   their "Arkiv fit and trade-offs" criterion.
 
 ## Known risks
 

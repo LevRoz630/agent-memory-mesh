@@ -1,11 +1,8 @@
 // The REST surface, shared between local dev (server.mjs, which adds a real websocket push
 // on top) and the Vercel deployment (api/index.mjs, which can't hold a persistent websocket
 // — Vercel's Node runtime is a function per request, no long-lived process — so it exposes
-// /api/recent for the frontend's polling fallback instead).
-//
-// Splitting this out is the direct fix for a real failure: deploying server.mjs as-is to
-// Vercel returned FUNCTION_INVOCATION_FAILED on every route, static files included —
-// confirmed live before restructuring, not assumed.
+// /api/recent for the frontend's polling fallback instead). Deploying server.mjs as-is to
+// Vercel returned FUNCTION_INVOCATION_FAILED on every route — confirmed live, not assumed.
 
 import express from 'express'
 import { fileURLToPath } from 'node:url'
@@ -15,7 +12,7 @@ import { writeMemory, readMemoryContent } from './memory.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
-function serializeAttrs(a) {
+export function serializeAttrs(a) {
   return Object.fromEntries(Object.entries(a ?? {}).map(([k, v]) => [k, typeof v === 'bigint' ? v.toString() : v]))
 }
 

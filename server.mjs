@@ -5,7 +5,7 @@
 
 import { createServer } from 'node:http'
 import { WebSocketServer } from 'ws'
-import { createApp } from './src/app.mjs'
+import { createApp, serializeAttrs } from './src/app.mjs'
 import { makeClients, watchMemories } from './src/arkiv.mjs'
 import { readMemoryContent } from './src/memory.mjs'
 
@@ -38,10 +38,7 @@ function broadcast(msg) {
   }
 }
 
-// The actual Mission 03 mechanism: a live subscription, no fromBlock, no polling loop.
-// watchMemories already does the bounded getEntity follow-up read and silently skips
-// anything that isn't an agent_memory entity — an irrelevant chain event never reaches
-// broadcast() at all, which is the "does the filter actually work" demo requirement.
+// This is the Mission 03 artifact — see watchMemories in src/arkiv.mjs for the mechanism.
 watchMemories(
   wsClient,
   pub,
@@ -55,7 +52,7 @@ watchMemories(
     console.log(`live: agent_memory written by ${owner}, key=${entityKey}`)
     broadcast({
       type: 'memory', key: entityKey, owner, expiresAt: String(expiresAt),
-      attributes: Object.fromEntries(Object.entries(attributes).map(([k, v]) => [k, typeof v === 'bigint' ? v.toString() : v])),
+      attributes: serializeAttrs(attributes),
       content,
     })
   },

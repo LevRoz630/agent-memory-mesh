@@ -1,20 +1,17 @@
 // Arkiv index for Agent Memory Mesh: the agent_memory entity type. Content lives on Swarm
 // (src/swarm.mjs) — this file only ever touches the pointer + metadata.
 //
-// Verified against @arkiv-network/sdk's shipped source (node_modules/@arkiv-network/sdk/src),
-// not just its docs, before writing this — the shipped tests/source were the most reliable
-// reference in pre-flight and that held here too:
+// Verified against @arkiv-network/sdk's shipped source, not just its docs:
 //   - watchEntityEvents' onEntityCreated carries only { entityKey, owner, expiresAt } plus
-//     block context — never attributes or payload. Confirmed straight from
-//     src/actions/public/watchEntityEvents.ts and src/types/events.ts.
+//     block context — never attributes or payload.
 //   - ExpirationTime.fromBlocks(n) takes a plain positive integer, exact, no rounding.
 //   - createEntity's returned expiresAt is a LOWER BOUND for from*() duration helpers — the
 //     engine resolves it against whatever block the tx actually lands in, so requested and
 //     applied can differ. Record both.
 //
 // Attribute names are snake_case ONLY — the engine's charset is lowercase, digits, _, -, .
-// (verified in pre-flight: smoke/attr-charset.mjs). agentId/memoryType/swarmRef would be
-// silently accepted by the SDK's client-side validator and rejected on-chain.
+// agentId/memoryType/swarmRef would be silently accepted by the SDK's client-side validator
+// and rejected on-chain.
 
 import { createPublicClient, createWalletClient, ExpirationTime, str, u64, stringToPayload } from '@arkiv-network/sdk'
 import { tiramisu } from '@arkiv-network/sdk/chains'
@@ -34,9 +31,8 @@ export function makeClients({ privateKey, httpUrl, wsUrl }) {
   const account = privateKeyToAccount(privateKey)
   const pub = createPublicClient({ chain: tiramisu, transport: http(httpUrl, { cacheTime: 0 }) })
   const wallet = createWalletClient({ account, chain: tiramisu, transport: http(httpUrl, { cacheTime: 0 }) })
-  // A SEPARATE websocket client for watchEntityEvents — sharing the HTTP client's transport
-  // would not open a real subscription. tiramisu ships a default webSocket() RPC URL, so
-  // wsUrl needs no explicit value (verified in pre-flight).
+  // Separate websocket client for watchEntityEvents — sharing the HTTP client's transport
+  // would not open a real subscription.
   const wsClient = createPublicClient({ chain: tiramisu, transport: webSocket(wsUrl) })
   return { account, pub, wallet, wsClient }
 }
@@ -75,6 +71,12 @@ export function unwrapAttributes(attrs) {
   return Object.fromEntries(Object.entries(attrs ?? {}).map(([k, v]) => [k, v?.value ?? v]))
 }
 
+async function runQuery(pub, pred, limit) {
+  const result = await pub.select('*').where(pred).limit(limit).fetch()
+  const entities = Array.isArray(result) ? result : (result?.entities ?? [])
+  return entities.map((e) => ({ ...e, attributes: unwrapAttributes(e.attributes) }))
+}
+
 /**
  * Compound query: agent_id = X AND memory_type = Y [AND importance >= minImportance]
  * [AND tag STARTSWITH tagPrefix]. This is the query-depth demo — real filters, not an id
@@ -85,11 +87,8 @@ export async function queryMemories(pub, { agentId, memoryType, minImportance, t
   if (memoryType) clauses.push(eq(ATTR.memoryType, str(memoryType)))
   if (minImportance !== undefined) clauses.push(gte(ATTR.importance, u64(BigInt(minImportance))))
   if (tagPrefix) clauses.push(startsWith(ATTR.tag, str(tagPrefix)))
-
   const pred = clauses.length === 1 ? clauses[0] : and(...clauses)
-  const result = await pub.select('*').where(pred).limit(limit).fetch()
-  const entities = Array.isArray(result) ? result : (result?.entities ?? [])
-  return entities.map((e) => ({ ...e, attributes: unwrapAttributes(e.attributes) }))
+  return runQuery(pub, pred, limit)
 }
 
 /**
@@ -102,9 +101,7 @@ export async function queryRecent(pub, { agentIds = ['atlas', 'nova'], limit = 2
   const pred = agentIds.length === 1
     ? eq(ATTR.agentId, str(agentIds[0]))
     : or(...agentIds.map((id) => eq(ATTR.agentId, str(id))))
-  const result = await pub.select('*').where(pred).limit(limit).fetch()
-  const entities = Array.isArray(result) ? result : (result?.entities ?? [])
-  return entities.map((e) => ({ ...e, attributes: unwrapAttributes(e.attributes) }))
+  return runQuery(pub, pred, limit)
 }
 
 /**

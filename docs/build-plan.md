@@ -3,7 +3,7 @@
 ## The pitch, one sentence
 
 An AI agent's memory is a typed, queryable, self-expiring index on Arkiv, with the actual
-content stored portably and content-addressed on Swarm, under an ENSv2 subname identity —
+content stored portably and content-addressed on Swarm, under an ENSv2 name as identity —
 so when one agent writes a memory, any other agent or app holding that identity can see it
 update live, and short-term memory disappears from queries when it's supposed to, instead
 of living forever in someone's database.
@@ -19,7 +19,7 @@ patterns.
   **Skip Mission 01** — no pre-existing indexer exists to decommission; inventing one to
   turn off is against the brief's own guidance.
 - **Swarm** — real upload/retrieval via Swarm ID (gateway, no Bee node).
-- **ENS** — ENSv2 beta on Sepolia, subname = agent identity, resolver = agent profile.
+- **ENS** — ENSv2 beta on Sepolia, name = agent identity.
 - **Team1 — not pursued.** Wrong network (Fuji/Avalanche) for this product; forcing it in
   would dilute the demo for no clean narrative fit.
 
@@ -50,7 +50,7 @@ Entity type `agent_memory`:
 
 | Attribute | Type | Purpose |
 |---|---|---|
-| `agent_id` | str | which agent identity (matches the ENS subname label) |
+| `agent_id` | str | which agent identity (matches the ENS name's label) |
 | `memory_type` | str | `fact` \| `task` \| `preference` \| `event` |
 | `tag` | str | short topic/category string |
 | `importance` | u64 | 0–10 salience, enables range queries |
@@ -62,15 +62,22 @@ Demo queries for the judging session (compound, not id lookup):
 
 ### ENSv2 leg
 
-One parent name, two agent subnames (`atlas.<parent>.eth`, `nova.<parent>.eth`) on the
-Sepolia beta deployment. Resolver text record on each holds a short agent profile string.
-Depth-of-integration story: **the subname is the identity**, not a lookup.
+**Plan:** one parent name, two agent subnames (`atlas.<parent>.eth`, `nova.<parent>.eth`)
+on the Sepolia beta deployment, resolver text record on each. Depth-of-integration story:
+**the subname is the identity**, not a lookup.
 
-**Known friction, front-load it:** registering a subname needs minting a test token,
+**Known friction, expected going in:** registering a subname needs minting a test token,
 approving the registrar, then registering — three transactions before you have a name,
 and ENSv2's write flows are flagged by their own docs as "may still change before
 mainnet." This is the one leg with zero prior validated code. Do it **first**, so
 any beta surprise is absorbed early rather than discovered later on the critical path.
+
+**Outcome:** flat top-level names (`atlas-ethrome26.eth`, `nova-ethrome26.eth`) instead of
+a parent-plus-subname hierarchy — true subname creation needed deploying a custom
+subregistry contract, which didn't fit the cap. Both registered clean after fixing a wrong
+ABI (a doc summary had `duration` as `uint256`, the real contract takes `uint64`). Profile
+text records are blocked by a real `PublicResolverV2` limitation. Full detail in
+`docs/PRODUCT.md` Component 3 and `EVIDENCE.md`.
 
 ## Cuts, in order, if time runs short
 
@@ -79,8 +86,8 @@ any beta surprise is absorbed early rather than discovered later on the critical
    judgeable product.
 2. Drop the "extend on activity" long-term-memory lease pattern — keep only the
    "let it lapse" pattern for Mission 02. One pattern, well demonstrated, beats two half-done.
-3. Drop ENSv2 resolver depth (roles/delegation) — a single subname + one text record still
-   qualifies ("does real work," "end-to-end on live testnet data"), it's just not maximal.
+3. Drop ENSv2 resolver depth (roles/delegation, text records) — the registered names alone
+   still qualify ("does real work," "end-to-end on live testnet data"), just not maximal.
 4. If Swarm ID has rough edges, fall back to a plain gateway `fetch()` — the brief allows
    this if you say why in the README.
 5. Never cut: the live two-panel update (it's simultaneously Mission 03's exact ask and
@@ -168,4 +175,4 @@ on chain · ≤3-minute demo video, works logged out.
 2. Agent A "remembers" something → show it encrypt, land on Swarm, index on Arkiv.
 3. Agent B's screen updates **with no refresh** — this is the live-wire moment.
 4. Fast-forward: a short-TTL memory disappears from a query with no delete call.
-5. One line each on the ENS subname identity and why the content lives on Swarm, not Arkiv.
+5. One line each on the ENS name identity and why the content lives on Swarm, not Arkiv.

@@ -1,21 +1,13 @@
 // Swarm leg: content storage for Agent Memory Mesh. Arkiv holds the pointer + metadata
 // (src/arkiv.mjs); this file holds the actual memory content, encrypted, content-addressed.
 //
-// Tooling note, checked against reality before writing this: @snaha/swarm-id's
-// SwarmIdClient (node_modules/@snaha/swarm-id/README.md) is iframe-based browser auth —
-// it creates a hidden iframe and drives an interactive passkey/connect flow. That doesn't
-// fit a server process writing memories programmatically with no human in the loop for
-// each write. Swarm's own bounty brief explicitly allows this: "If Bee-js genuinely suits
-// your app better, say why in the README" — same principle applies to the plain gateway
-// fetch() path, which pre-flight already proved live (5/5 unstamped uploads OK, byte-
-// identical round-trip) and this session re-verified live before writing this file.
+// @snaha/swarm-id's SwarmIdClient is iframe-based browser auth (interactive passkey/connect
+// flow) — no fit for a server writing memories programmatically. Using the plain gateway
+// fetch() path instead, which Swarm's own bounty brief explicitly allows.
 //
-// Encryption is app-level (AES-256-GCM, Node's own crypto), not Swarm's gateway-side
-// Swarm-Encrypt header — the gateway never sees plaintext at all this way, which is
-// actually stronger than the header option (there, the gateway decrypts-then-reencrypts,
-// meaning it sees the plaintext in transit). Content references are therefore always
-// plain 64 hex chars, not 128 — the 128-hex/no-"0x"-prefix landmine documented in
-// docs/PRODUCT.md doesn't apply to this design; noted there for the record.
+// Encryption is app-level (AES-256-GCM), not Swarm's gateway-side Swarm-Encrypt header —
+// the gateway never sees plaintext at all this way. References are therefore always plain
+// 64 hex chars, not the 128-hex form Swarm-Encrypt produces.
 
 import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto'
 
@@ -28,7 +20,7 @@ const GATEWAY = process.env.SWARM_GATEWAY ?? 'https://api.gateway.ethswarm.org'
  */
 function getKey() {
   const hex = process.env.MEMORY_ENC_KEY
-  if (!hex || hex.length !== 64) {
+  if (!hex || !/^[0-9a-f]{64}$/i.test(hex)) {
     throw new Error('set MEMORY_ENC_KEY to a 32-byte hex string (64 hex chars) in the environment')
   }
   return Buffer.from(hex, 'hex')
