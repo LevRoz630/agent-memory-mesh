@@ -1,5 +1,23 @@
 # Evidence log
 
+## Public deployment
+
+`https://temporary-zippy-viola-vexk6b6.vercel.app` — **temporary, expires ~60 min after
+deploy.** Deployed via `vercel deploy --temporary` (no login needed for this session), full
+write→Swarm→Arkiv→query round trip verified live against it. Must be re-deployed (or
+claimed at the claim URL printed by the deploy command, which needs a Vercel login) closer
+to Sunday submission — do not rely on this exact URL still being up by then.
+
+To redeploy: `vercel deploy --temporary --yes -e ARKIV_PRIVATE_KEY=... -e MEMORY_ENC_KEY=...`
+from the repo root. First attempt at this deploy failed outright
+(`FUNCTION_INVOCATION_FAILED` on every route) — Vercel's zero-config "express" framework
+detection had auto-wrapped `server.mjs` itself as a second function, and `server.mjs` calls
+`httpServer.listen()` and creates a `WebSocketServer`, neither of which is valid inside a
+serverless function invocation. Fixed with `"framework": null` in `vercel.json`, which
+opts out of that auto-detection entirely and leaves only the explicit `api/index.mjs`
+function plus native static serving of `public/`.
+
+
 Filled in as things actually happen, not reconstructed after the fact. Used for the
 ETHRome submission form and Arkiv's Tally form, both of which ask for exact addresses and
 transaction links, not a claim that something works.
