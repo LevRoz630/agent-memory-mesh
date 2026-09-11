@@ -1,0 +1,14 @@
+{
+  "name": "agent-memory-mesh",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "description": "Agent memory as identity (ENSv2) + content (Swarm) + expiring index (Arkiv) — ETHRome 2026",
+  "dependencies": {
+    "@arkiv-network/sdk": "^0.8.0",
+    "viem": "^2.56.3",
+    "ws": "^8.21.3",
+    "@snaha/swarm-id": "latest"
+  }
+}
