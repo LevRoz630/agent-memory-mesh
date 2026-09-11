@@ -145,8 +145,10 @@ mid-build — this supersedes the hacker-manual mission-page text above where th
 - **Evidence to prepare:** public Tiramisu creator-wallet address(es), entity keys mapped
   to their creation transactions, and for Mission 02 both the requested and applied
   expiration values from the receipt.
-- **Currency discrepancy, unresolved:** the hacker manual says the Arkiv pool is paid in
-  USDC; this MCP's guidance says "EUR 2,500." Ask Santiago directly, he's on-site now.
+- **Currency discrepancy, resolved by assumption:** hacker manual says USDC, MCP guidance
+  says "EUR 2,500" — treating the EUR figure as the MCP doc's mistake, going with USDC
+  per the manual (matches the confirmed Sept 3 rail). Not worth spending workshop time
+  confirming; doesn't change anything about how the app gets built.
 
 ## Qualification checklists
 
