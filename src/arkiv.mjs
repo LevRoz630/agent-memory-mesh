@@ -18,6 +18,7 @@ import { tiramisu } from '@arkiv-network/sdk/chains'
 import { and, eq, gte, or, startsWith } from '@arkiv-network/sdk/query'
 import { http, webSocket } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
+import { nonceManager } from 'viem/nonce'
 
 const ATTR = {
   agentId: 'agent_id',
@@ -28,7 +29,9 @@ const ATTR = {
 }
 
 export function makeClients({ privateKey, httpUrl, wsUrl }) {
-  const account = privateKeyToAccount(privateKey)
+  // nonceManager matters here: without it, concurrent createEntity calls from the same
+  // wallet race on the same nonce and only one of them lands (confirmed live, 1/6 vs 6/6).
+  const account = privateKeyToAccount(privateKey, { nonceManager })
   const pub = createPublicClient({ chain: tiramisu, transport: http(httpUrl, { cacheTime: 0 }) })
   const wallet = createWalletClient({ account, chain: tiramisu, transport: http(httpUrl, { cacheTime: 0 }) })
   // Separate websocket client for watchEntityEvents — sharing the HTTP client's transport

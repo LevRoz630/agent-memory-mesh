@@ -82,5 +82,13 @@ export function createApp({ pub, wallet }) {
     res.json({ head: head.toString() })
   })
 
+  // Catches errors that never reach a route handler at all — malformed JSON or an oversized
+  // body both fail inside express.json() itself. Without this, Express's default error
+  // handler serves a full stack trace, including absolute server file paths, to the client.
+  app.use((err, _req, res, _next) => {
+    console.error('request failed:', err)
+    res.status(err.status || 400).json({ error: 'invalid request' })
+  })
+
   return app
 }

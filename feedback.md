@@ -36,6 +36,58 @@ that took a live print-and-inspect to diagnose.
 Reproduce: `node --env-file=.env -e "import('./src/arkiv.mjs').then(...)"`, query any
 written entity, inspect `.attributes` before unwrapping.
 
+**Sharper under live stress-testing:** `str`/`u64` *value* constructors validate hard,
+client-side, before any RPC call — a negative `u64`, a non-integer numeric, a 129-byte
+`str`, a control character in a `str`, all rejected up front with an accurate, actionable
+message. Attribute *names* get none of that rigor (camelCase silently passes the client
+validator, above, and only fails on-chain). Same SDK, two different validation rigor
+levels depending on whether the check is on a name or a value.
+
+---
+
+## 4. No nonce manager on the account returned by `privateKeyToAccount` — concurrent writes from one wallet fail 5/6 of the time
+
+**Reporter: agent observation, reproduced twice (failing, then fixed).**
+
+Firing several `createEntity` calls concurrently from the same wallet — two agents writing
+near-simultaneously, or a double-clicked submit button — sends them all with the same
+nonce unless the account was built with a nonce manager. Six concurrent `createMemory()`
+calls against live Tiramisu: 1 landed, 5 failed with `Execution error without revert
+data`, an error message that gives no hint it's a nonce collision.
+
+**Fix confirmed:** `privateKeyToAccount(privateKey, { nonceManager })` (viem's own
+`viem/nonce` export) took the identical test to 6/6 fulfilled, 6 distinct entity keys.
+Applied in this repo's `src/arkiv.mjs`.
+
+**Suggested fix:** either Arkiv's own account-creation guidance defaults to a nonce
+manager, or the docs call out explicitly that concurrent writes from one signer need one —
+nothing in the quickstart flags this until a demo silently drops writes.
+
+Reproduce: fire N `wallet.createEntity(...)` calls with `Promise.all` from one account
+built without `nonceManager`; watch most of them revert.
+
+---
+
+## 5. `getEntity` throws the identical error for "never existed" and "expired"
+
+**Reporter: agent observation, reproduced.**
+
+```
+getEntity(neverExistedKey)      → NoEntityFoundError: No live entity with key 0x...
+getEntity(realKeyPastItsExpiry) → NoEntityFoundError: No live entity with key 0x...
+```
+Same error class, same message shape — confirmed by writing an entity, reading it
+successfully pre-expiry, waiting past its recorded `expiresAt` block, and reading again.
+
+**Impact:** low here — `watchMemories`'s catch block already treats every `getEntity`
+failure the same way, which happens to be correct for this app. But a UI that wanted to
+show "this memory just expired" as a message distinct from "bad key" can't build that off
+the SDK error alone; it would need to have cached the expiry height itself beforehand. A
+malformed key (wrong byte length) does fail differently and clearly
+(`InvalidValueError: ... not exactly 32 bytes`), so structurally-invalid is at least
+distinguishable from structurally-valid-but-absent — just not "never existed" from
+"expired."
+
 ---
 
 ## 2. The `arkiv-ethrome` MCP's `check_schema` entity-type heading pattern is unrecognized across every reasonable format tried
@@ -69,7 +121,7 @@ stays `0` in the `observed` block every time.
 
 ---
 
-## 3. Confirmed correct, re-verified live in this session, not just in isolated smoke tests
+## 6. Confirmed correct, re-verified live in this session, not just in isolated smoke tests
 
 These held up under actual product use, not just a standalone probe:
 
@@ -98,3 +150,9 @@ These held up under actual product use, not just a standalone probe:
   (`node_modules/@arkiv-network/sdk/src/actions/public/watchEntityEvents.ts`) before
   writing code against it, which avoided building the wrong thing rather than discovering
   it live.
+- **The websocket transport recovers from a forced connection drop with zero app-side
+  reconnect code.** Killed the underlying raw socket mid-session (not a clean unsubscribe)
+  while a watcher was live; `onError` fired as expected, and a memory written immediately
+  after arrived normally with no duplicate delivery and no missed event — viem's default
+  reconnect handled it. Still untested: an outage long enough that the client misses blocks
+  entirely; that gap stays honestly described as untested, not assumed fine.

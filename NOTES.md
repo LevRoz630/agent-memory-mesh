@@ -126,8 +126,14 @@ and camelCase entirely (verified empirically in pre-flight; the SDK's client-sid
 - `getEntity`/`select` return attribute values as typed wrapper objects
   (`{ type: 'str', value: 'atlas' }`), asymmetric with the write path's plain constructors
   (`str()`/`u64()`). Unwrap once, centrally — `unwrapAttributes()` in `src/arkiv.mjs`.
+- `getEntity` throws the identical `NoEntityFoundError` for a key that never existed and a
+  key that legitimately expired — confirmed live, can't tell them apart from the error
+  alone. Low impact here since `watchMemories` treats both the same way already.
 - `watchEntityEvents`'s `onEntityCreated` carries no attributes or payload, only
   `entityKey`/`owner`/`expiresAt` — confirmed against the SDK's own shipped source.
+- `privateKeyToAccount` needs viem's `nonceManager` passed explicitly, or concurrent
+  `createEntity` calls from the same wallet collide on nonce and mostly revert (confirmed:
+  1/6 landed without it, 6/6 with it). Applied in `makeClients()`.
 
 **Mission mapping.** Mission 02 (`Built to expire`) is the TTL memory: same query before
 and after the expiry boundary returns a different row count, no delete call in the trace.
