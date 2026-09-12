@@ -121,10 +121,36 @@ function render() {
   }
 }
 
+function getStoredPassword() {
+  try { return sessionStorage.getItem('demoPassword') || '' } catch { return '' }
+}
+
+function setStoredPassword(pw) {
+  try { sessionStorage.setItem('demoPassword', pw) } catch {}
+}
+
+function clearStoredPassword() {
+  try { sessionStorage.removeItem('demoPassword') } catch {}
+}
+
 async function post(path) {
-  const res = await fetch(path, { method: 'POST' })
-  const data = await res.json()
-  if (!res.ok) throw new Error(data.error || res.statusText)
+  const attempt = async () => {
+    const res = await fetch(path, { method: 'POST', headers: { 'x-demo-password': getStoredPassword() } })
+    const data = await res.json()
+    return { res, data }
+  }
+  let { res, data } = await attempt()
+  if (res.status === 401) {
+    const pw = prompt('Demo password:')
+    if (pw) {
+      setStoredPassword(pw)
+      ;({ res, data } = await attempt())
+    }
+  }
+  if (!res.ok) {
+    if (res.status === 401) clearStoredPassword()
+    throw new Error(data.error || res.statusText)
+  }
   state = data.state
   render()
 }

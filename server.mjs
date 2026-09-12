@@ -2,7 +2,7 @@
 // deployment (api/index.mjs) can't hold open.
 
 import { createServer } from 'node:http'
-import { createECDH } from 'node:crypto'
+import { createECDH, timingSafeEqual } from 'node:crypto'
 import { WebSocketServer } from 'ws'
 import { createApp, serializeAttrs } from './src/app.mjs'
 import { makeClients, makeAgentSigners, watchMemories, AGENT_IDS } from './src/arkiv.mjs'
@@ -52,9 +52,21 @@ const demo = createDemo({
   onUpdate: (state) => broadcast({ type: 'demo', state }),
 })
 
+function requireDemoPassword(req, res, next) {
+  const expected = process.env.DEMO_PASSWORD
+  if (!expected) return next()
+  const got = req.get('x-demo-password') ?? ''
+  const expectedBuf = Buffer.from(expected)
+  const gotBuf = Buffer.from(got)
+  if (expectedBuf.length !== gotBuf.length || !timingSafeEqual(expectedBuf, gotBuf)) {
+    return res.status(401).json({ error: 'password required' })
+  }
+  next()
+}
+
 app.get('/api/demo/state', (_req, res) => res.json(demo.getState()))
 
-app.post('/api/demo/start', async (_req, res) => {
+app.post('/api/demo/start', requireDemoPassword, async (_req, res) => {
   try {
     res.json({ state: await demo.start() })
   } catch (e) {
@@ -63,7 +75,7 @@ app.post('/api/demo/start', async (_req, res) => {
   }
 })
 
-app.post('/api/demo/kill/:agentId', (req, res) => {
+app.post('/api/demo/kill/:agentId', requireDemoPassword, (req, res) => {
   try {
     res.json({ state: demo.kill(req.params.agentId) })
   } catch (e) {
