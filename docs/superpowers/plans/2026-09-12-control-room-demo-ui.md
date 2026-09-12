@@ -19,7 +19,7 @@
 
 - One process only. All agents share one Swarm `Stamper` (`src/swarm.mjs` `getSwarm()`); separate processes would reuse postage slots. The demo runs inside `server.mjs`.
 - No new npm dependencies.
-- Do not edit `README.md`, `public/index.html`, `api/index.mjs` or `src/app.mjs`. The Vercel deployment has no long-lived process and cannot run the demo.
+- Do not edit `README.md`, `public/index.html` or `src/app.mjs`.
 - Arkiv attribute names stay snake_case; `memory_type` stays within `event` / `claim` / `lane` / `done` / `verdict`.
 - Every value interpolated into HTML goes through `esc()`; every value interpolated into a URL goes through `url()` (same helpers as `public/index.html`).
 - Tests follow the repo's pattern: a plain `node` script in `scripts/` that prints `pass`/`FAIL` lines and `RESULT: passed|FAILED`, exiting 0 or 1. Offline tests need no `.env`.

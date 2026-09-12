@@ -15,9 +15,10 @@ scripts/orchestrator.mjs      drives atlas/nova/sol as concurrent loops
 scripts/agent-chat.mjs        a Claude session with two tools: remember / recall
         │
         ▼
-src/app.mjs                   REST surface (shared)
-  ├── server.mjs              local: same app + WebSocket push on /live
-  └── api/index.mjs           Vercel: same app, no WebSocket
+src/app.mjs                   REST surface
+        │
+        ▼
+server.mjs                    same app + WebSocket push on /live
         │
         ▼
 src/memory.mjs                joins the two legs: upload to Swarm, then index in Arkiv
@@ -65,7 +66,7 @@ by comparing against the current block.
 
 **Live view.** `watchEntityEvents` delivers `{entityKey, owner, expiresAt}` only; each event is
 read back to check `app` before being treated as ours. The watch needs a `webSocket()`-transport
-client; on Vercel (no long-lived process) this falls back to polling `/api/recent`.
+client; a client that can't hold one open falls back to polling `/api/recent`.
 
 **Demo clamp.** `DEMO_MAX_TTL_BLOCKS`, applied only to `claim` writes, caps a claim's requested
 TTL for recorded demos. The response reports requested/applied/clamped separately.

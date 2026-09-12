@@ -7,5 +7,4 @@ node_modules/
 .burner-key
 .second-key
 dist/
-.vercel
 audit-log.jsonl

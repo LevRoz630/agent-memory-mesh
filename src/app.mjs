@@ -1,5 +1,5 @@
-// Shared REST surface: server.mjs adds a websocket push on top, api/index.mjs can't (a Vercel
-// function has no long-lived process) and serves /api/recent for polling instead.
+// REST surface used by server.mjs, which adds a websocket push on top at /live. /api/recent
+// stays available as a polling fallback for clients that can't hold a websocket open.
 
 import express from 'express'
 import { fileURLToPath } from 'node:url'
