@@ -1,7 +1,10 @@
 import { writeMemory } from './memory.mjs'
 import { writeToLane } from './lane.mjs'
 import { queryByTagAndType } from './arkiv.mjs'
-import { tryClaim, renewClaim, takeOver, finish as finishWork, LONG_LIVED_BLOCKS } from './protocol.mjs'
+import {
+  tryClaim, renewClaim, takeOver, finish as finishWork, startHeartbeat, watchForPeerOutages,
+  verify as verifyWork, LONG_LIVED_BLOCKS,
+} from './protocol.mjs'
 import { WORK_STEPS } from './demo.mjs'
 
 function signerFor(ctx, agentId) {
@@ -21,6 +24,12 @@ export function createDemoOps(ctx) {
     },
 
     tryClaim: (agentId, tag) => tryClaim(ctx, agentId, tag),
+
+    startHeartbeat: (agentId, shouldContinue) => startHeartbeat(ctx, agentId, shouldContinue),
+
+    watchForPeerOutages: (agentId, onOutageDetected) => watchForPeerOutages(ctx, agentId, onOutageDetected),
+
+    verify: (agentId, tag) => verifyWork(ctx, agentId, tag),
 
     renewClaim: (agentId, entityKey, shouldContinue) => renewClaim(ctx, agentId, entityKey, undefined, shouldContinue),
 

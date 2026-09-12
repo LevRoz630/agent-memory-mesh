@@ -15,6 +15,18 @@ function fakeOps({ leaseMs }) {
   return {
     log,
     steps,
+    async startHeartbeat(agentId, shouldContinue) {
+      log.push(['heartbeat-start', agentId])
+      while (shouldContinue()) await sleep(5)
+      log.push(['heartbeat-stop', agentId])
+    },
+    watchForPeerOutages() {
+      return () => {}
+    },
+    async verify(agentId, tag) {
+      log.push(['verify', agentId, tag])
+      return { outcome: 'fixed' }
+    },
     async reportIncident(tag) {
       log.push(['report', tag])
       return { swarmRef: 'ab'.repeat(32), entityKey: '0x' + '1'.repeat(64) }
@@ -68,7 +80,7 @@ const check = (name, ok) => {
 console.log('demo controller: kill, lapse, takeover, resume\n')
 
 const ops = fakeOps({ leaseMs: 150 })
-const demo = createDemo({ ops, timings: { stepMs: 60, retryMs: 20, startDelayMs: { nova: 0, sol: 40 } } })
+const demo = createDemo({ ops, timings: { stepMs: 60, retryMs: 20, verifyPollMs: 20, startDelayMs: { nova: 0, sol: 40 } } })
 
 await demo.start()
 check('report filed at start', ops.log.some((l) => l[0] === 'report'))
@@ -97,6 +109,12 @@ check('every step done exactly once, in order', JSON.stringify(ops.steps.map((s)
 check('sol resumed where nova stopped', ops.steps.find((s) => s.agentId === 'sol')?.step === novaSteps)
 check('timeline records the resume', state.timeline.some((e) => e.agentId === 'sol' && e.text.includes('resuming')))
 check('killing an unknown agent throws', (() => { try { demo.kill('mallory'); return false } catch { return true } })())
+check('every agent runs a heartbeat', ['atlas', 'nova', 'sol'].every((id) => ops.log.some((l) => l[0] === 'heartbeat-start' && l[1] === id)))
+check('a killed agent stops beating', ops.log.some((l) => l[0] === 'heartbeat-stop' && l[1] === 'nova'))
+
+await waitFor(() => ops.log.some((l) => l[0] === 'verify'), 'someone to verify the resolved incident')
+const verdict = ops.log.find((l) => l[0] === 'verify')
+check('the verdict is written by an agent other than the finisher', verdict[1] !== 'sol')
 
 console.log('\nscenario: restart mid-run\n')
 
@@ -104,6 +122,16 @@ const protocolCalls = []
 const ops2 = {
   log: [],
   steps: [],
+  async startHeartbeat(_agentId, shouldContinue) {
+    while (shouldContinue()) await sleep(5)
+  },
+  watchForPeerOutages() {
+    return () => {}
+  },
+  async verify(agentId, tag) {
+    protocolCalls.push({ op: 'verify', tag })
+    return { outcome: 'fixed' }
+  },
   async reportIncident(tag) {
     protocolCalls.push({ op: 'reportIncident', tag })
     this.log.push(['report', tag])
