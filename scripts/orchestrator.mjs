@@ -8,7 +8,7 @@
 
 import { makeClients, makeAgentSigners } from '../src/arkiv.mjs'
 import { writeMemory } from '../src/memory.mjs'
-import { writeToLane } from '../src/lane.mjs'
+import { writeToLane, nextFreeLaneIndex } from '../src/lane.mjs'
 import { tryClaim, renewClaim, takeOver, finish, verify } from '../src/protocol.mjs'
 
 const httpUrl = process.env.ARKIV_HTTP_URL
@@ -23,7 +23,8 @@ const log = (agent, msg) => console.log(`[${agent}] ${msg}`)
 async function atlasReports() {
   const atlas = signers.get('atlas')
   const agentPrivateKeyHex = process.env.ARKIV_PRIVATE_KEY_ATLAS
-  await writeToLane(agentPrivateKeyHex, atlas.account.address, tag, 0, { kind: 'diagnosis', note: 'incident detected' })
+  const index = await nextFreeLaneIndex(atlas.account.address, tag)
+  await writeToLane(agentPrivateKeyHex, atlas.account.address, tag, index, { kind: 'diagnosis', note: 'incident detected' })
   await writeMemory(atlas.wallet, {
     agentId: 'atlas', memoryType: 'event', tag, importance: 8,
     content: { note: 'incident detected' }, ttlBlocks: 600,

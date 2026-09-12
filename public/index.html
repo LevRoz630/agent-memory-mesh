@@ -252,6 +252,14 @@ try {
       else if (msg.phase === 'error') logLine(`✕ getEntity failed for ${short(msg.entityKey)} (expired or transient)`, 'ignored')
       return
     }
+    if (msg.type === 'extended') {
+      logLine(`↻ lease renewed for ${short(msg.entityKey)}, owner ${short(msg.owner)}`, 'phase-resolved')
+      return
+    }
+    if (msg.type === 'deleted') {
+      logLine(`✕ ${short(msg.entityKey)} released`, 'ignored')
+      return
+    }
     if (msg.type !== 'memory') return
     logLine(`✓ content decrypted from Swarm, rendering`, 'phase-memory')
     addLiveRow(msg.attributes, msg.content, msg.key, msg.owner)
