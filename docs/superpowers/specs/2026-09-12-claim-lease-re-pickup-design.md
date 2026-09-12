@@ -5,20 +5,26 @@ takeover path for work whose claim has lapsed.
 
 ## Problem
 
-The repo has one concept: an `agent_memory` entity with `agent_id`, `memory_type`, `tag`,
-`importance`, `swarm_ref`. A "claim" is a memory whose `memory_type` happens to be `task`. Nothing
-makes a claim exclusive, nothing releases one, and nothing picks work back up. Both agents also
-sign with the same wallet, so `agent_id` is a string rather than an identity.
+The repo has one concept: an `agent_memory` entity with `app`, `agent_id`, `memory_type`, `tag`,
+`importance`, `swarm_ref`. `claim` is now one of the `memory_type` values the engine can filter
+on, so a claim is no longer a string convention an agent has to spell correctly. What is still
+missing is everything the lease is *for*: nothing makes a claim exclusive, nothing releases one,
+and nothing picks work back up. Both agents also sign with the same wallet, so `agent_id` is a
+string rather than an identity.
 
 ## Entity roles
 
-All three are ordinary `agent_memory` entities. The role is carried by `memory_type` + `tag`.
+All three are ordinary `agent_memory` entities. The role is carried by `memory_type`; the `tag`
+says which piece of work it is about.
 
 | Role | `memory_type` | `tag` | TTL | Written by |
 |---|---|---|---|---|
 | incident | `event` | `incident-<id>` | 600 blocks | the reporting agent |
-| claim | `task` | `claim-incident-<id>` | 8 blocks, renewed | the working agent |
+| claim | `claim` | `incident-<id>` | 8 blocks, renewed | the working agent |
 | done | `event` | `done-incident-<id>` | 600 blocks | the finishing agent |
+
+An incident and the claim over it now share a tag and differ only by type, so "who is working
+on `<id>`" is an equality match on two attributes rather than a prefix match on a built string.
 
 The asymmetry is the point: claims clean themselves up, completions persist. Expiry is the
 default and survival is what costs effort.
@@ -27,8 +33,8 @@ default and survival is what costs effort.
 
 Ordering is the feature. An agent wanting to work on `<id>`:
 
-1. Query `done-incident-<id>`. Present → stop, the work is already finished.
-2. Query live `claim-incident-<id>`. Present → stop, another agent holds it.
+1. Query `memory_type=event AND tag=done-incident-<id>`. Present → stop, work already finished.
+2. Query `memory_type=claim AND tag=incident-<id>`. Present → stop, another agent holds it.
 3. Otherwise write a claim with an 8-block TTL and begin work.
 
 While working, `extendEntity` on its own claim every ~3 blocks. On finishing, write the `done`
@@ -118,13 +124,34 @@ takeover agent then works in parallel with it. Real systems solve this with fenc
 the resource rejects writes carrying a stale lease generation. There is no such resource here, so
 the honest description is an advisory lease.
 
+## Still open, before any of this is built
+
+1. **Should `done` be a type too?** `claim` became a first-class `memory_type` because a lease
+   the engine cannot filter on is not a lease. The same argument applies to completion records:
+   `done-incident-<id>` is still a built string, and step 1 of the pickup protocol is the one
+   query where a missed match causes duplicated work. Making it `memory_type: 'done'` with tag
+   `incident-<id>` would make all three roles symmetric and every pickup query an equality match.
+   The cost is a fourth role in an enum the agent picks from, and `event` then means only
+   "something happened that is not a completion".
+2. **Is `app` enough to scope a query, or does the feed need owner addresses?** Every entity now
+   carries `app: 'agent-memory-mesh'`, but that constant is self-asserted — anything can write it
+   and appear in the index. Once the three wallets below exist, scoping reads to a known set of
+   owner addresses becomes possible and `app` becomes a convenience rather than a boundary.
+3. **Does the demo TTL clamp interact badly with renewal?** `DEMO_MAX_TTL_BLOCKS` clamps `claim`
+   writes specifically. An 8-block lease is already under any sane clamp, so today it is inert —
+   but a clamp that applies to claims and a protocol built on renewing claims are two features
+   aimed at the same number, and whichever lands second should check the other.
+
 ## Surface
 
 - `src/claims.mjs` — the protocol: `tryClaim`, `renewClaim`, `completeClaim`, `findUnclaimed`
-- `src/arkiv.mjs` — `extendMemory`, `deleteMemory`, claim/done queries, per-agent clients
+- `src/arkiv.mjs` — claim/done queries and per-agent clients; `extendMemory` and `deleteMemory`
+  already exist
 - `src/app.mjs` — `POST /api/claim`, `POST /api/claim/renew`, `POST /api/claim/complete`
 - `server.mjs` — the lapse watcher
-- `scripts/agent-chat.mjs` — `claim`, `renew`, `complete` tools; three agent ids
+- `scripts/agent-chat.mjs` — `renew` and `complete` tools; three agent ids. Claiming already
+  works through `remember` with `memoryType: 'claim'`, so a separate `claim` tool is only worth
+  adding if the protocol's query-first steps should be hidden behind one call.
 - `scripts/takeover.mjs` — one-shot: find an incident with no `done` and no live claim, take it
 - `public/index.html` — third agent, renewal and lapse lines in the event log
 
