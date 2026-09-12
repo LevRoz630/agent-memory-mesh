@@ -1,8 +1,17 @@
 // Arkiv index for agent_memory entities. Content itself lives on Swarm (src/swarm.mjs); this
 // file only touches the pointer and metadata.
 //
-// Attribute names must be snake_case: the SDK's client-side validator accepts agentId, the
-// engine's charset rejects it on-chain.
+// Verified against @arkiv-network/sdk's shipped source, not just its docs:
+//   - watchEntityEvents' onEntityCreated carries only { entityKey, owner, expiresAt } plus
+//     block context
+//   - ExpirationTime.fromBlocks(n) takes a plain positive integer, exact, no rounding.
+//   - createEntity's returned expiresAt is a LOWER BOUND for from*() duration helpers — the
+//     engine resolves it against whatever block the tx actually lands in, so requested and
+//     applied can differ. Record both.
+//
+// Attribute names are snake_case ONLY — the engine's charset is lowercase, digits, _, -, .
+// agentId/memoryType/swarmRef would be silently accepted by the SDK's client-side validator
+// and rejected on-chain.
 
 import { createPublicClient, createWalletClient, ExpirationTime, str, u64, stringToPayload } from '@arkiv-network/sdk'
 import { tiramisu } from '@arkiv-network/sdk/chains'
