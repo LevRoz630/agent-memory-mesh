@@ -1,158 +1,125 @@
 # Arkiv feedback — Agent Memory Mesh
 
-Written live during the build, not reconstructed afterward. Covers only surfaces used:
-SDK, MCP/tools. Every finding below is reproducible against this repo's code.
-
-Environment: `@arkiv-network/sdk@0.8.0`, `viem@2.56.3`, Node v22.23.2, chain Tiramisu
+Environment: `@arkiv-network/sdk@0.8.1`, `viem@2.56.3`, Node v22.23.2, chain Tiramisu
 `7738577` (`0x7614d1`).
 
+Every item below is a reproduced fact, run live against Tiramisu through this repo's own
+code — not a developer opinion and not a standalone probe.
+
 ---
 
-## 1. `getEntity`/`select` return attribute values as typed wrapper objects — asymmetric with the write path
-
-**Reporter: agent observation, reproduced.**
-
-Writing an attribute takes a tagged constructor: `str('atlas')`, `u64(7n)`. Reading it back
-does **not** hand back the plain value the constructor took — it hands back
-`{ type: 'str', value: 'atlas' }` / `{ type: 'u64', value: 7n }`.
+## 1. Read path returns typed wrapper objects; write path takes bare constructors
 
 ```js
-const found = await pub.select('*').where(eq('agent_id', str('atlas'))).fetch()
-found[0].attributes
-// { agent_id: { type: 'str', value: 'atlas' }, importance: { type: 'u64', value: 7n }, ... }
+await wallet.createEntity({ attributes: { agent_id: str('atlas'), importance: u64(7n) }, ... })
+;(await pub.getEntity(key)).attributes
+// { agent_id: { type: 'str', value: 'atlas' }, importance: { type: 'u64', value: 7n } }
 ```
 
-**Expected:** either the read path hands back plain values symmetric with what the write
-path took, or (if the type tag is intentional, e.g. for disambiguating numeric types) the
-docs say so. Neither the SDK's JSDoc on `createEntity`'s `attributes` field nor the
-shipped test files we found earlier mention this asymmetry.
+Rendering a query result without unwrapping yields `[object Object]` — no error, no type
+mismatch.
 
-**Impact:** first attempt at rendering a query result silently produced `[object Object]`
-everywhere a value was expected — no error, no type mismatch, just wrong-looking output
-that took a live print-and-inspect to diagnose.
+Entity `0x44ca5eda9b5bdabecca4472dd37deeeebbedcf213cf65cc01d441f48dfabc63c`, tx
+`0x613d7c9850e9efd681354c2656b14850d4a945c8716b58cd904ab8f528cfa441`. Unwrapped centrally in
+`src/arkiv.mjs` (`unwrapAttributes`).
 
-**Workaround:** unwrap once, centrally — `unwrapAttributes()` in `src/arkiv.mjs`.
-
-Reproduce: `node --env-file=.env -e "import('./src/arkiv.mjs').then(...)"`, query any
-written entity, inspect `.attributes` before unwrapping.
-
-**Sharper under live stress-testing:** `str`/`u64` *value* constructors validate hard,
-client-side, before any RPC call — a negative `u64`, a non-integer numeric, a 129-byte
-`str`, a control character in a `str`, all rejected up front with an accurate, actionable
-message. Attribute *names* get none of that rigor (camelCase silently passes the client
-validator, above, and only fails on-chain). Same SDK, two different validation rigor
-levels depending on whether the check is on a name or a value.
+The shape appears in `getEntity`'s JSDoc example
+(`src/clients/decorators/arkivPublic.ts:66`) but not in `createEntity`'s, so the asymmetry is
+discoverable only from the read side.
 
 ---
 
-## 4. No nonce manager on the account returned by `privateKeyToAccount` — concurrent writes from one wallet fail 5/6 of the time
+## 2. Attribute-name validation: client permissive, engine strict, message self-contradictory
 
-**Reporter: agent observation, reproduced twice (failing, then fixed).**
+```js
+isValidAttributeName('agentId')  // true
+isValidAttributeName('AGENT')    // true
+// both rejected on-chain
+```
 
-Firing several `createEntity` calls concurrently from the same wallet — two agents writing
-near-simultaneously, or a double-clicked submit button — sends them all with the same
-nonce unless the account was built with a nonce manager. Six concurrent `createMemory()`
-calls against live Tiramisu: 1 landed, 5 failed with `Execution error without revert
-data`, an error message that gives no hint it's a nonce collision.
-
-**Fix confirmed:** `privateKeyToAccount(privateKey, { nonceManager })` (viem's own
-`viem/nonce` export) took the identical test to 6/6 fulfilled, 6 distinct entity keys.
-Applied in this repo's `src/arkiv.mjs`.
-
-**Suggested fix:** either Arkiv's own account-creation guidance defaults to a nonce
-manager, or the docs call out explicitly that concurrent writes from one signer need one —
-nothing in the quickstart flags this until a demo silently drops writes.
-
-Reproduce: fire N `wallet.createEntity(...)` calls with `Promise.all` from one account
-built without `nonceManager`; watch most of them revert.
-
----
-
-## 5. `getEntity` throws the identical error for "never existed" and "expired"
-
-**Reporter: agent observation, reproduced.**
+The engine's rejection message lists the character it just rejected as permitted:
 
 ```
-getEntity(neverExistedKey)      → NoEntityFoundError: No live entity with key 0x...
-getEntity(realKeyPastItsExpiry) → NoEntityFoundError: No live entity with key 0x...
+an attribute name holds "A" (0x41) at byte 0, which is outside the name charset
+("A"-"Z", "a"-"z", "0"-"9", ".", "-" and "_", with a letter first)
 ```
-Same error class, same message shape — confirmed by writing an entity, reading it
-successfully pre-expiry, waiting past its recorded `expiresAt` block, and reading again.
 
-**Impact:** low here — `watchMemories`'s catch block already treats every `getEntity`
-failure the same way, which happens to be correct for this app. But a UI that wanted to
-show "this memory just expired" as a message distinct from "bad key" can't build that off
-the SDK error alone; it would need to have cached the expiry height itself beforehand. A
-malformed key (wrong byte length) does fail differently and clearly
-(`InvalidValueError: ... not exactly 32 bytes`), so structurally-invalid is at least
-distinguishable from structurally-valid-but-absent — just not "never existed" from
-"expired."
+Value constructors validate strictly by contrast, all client-side before any RPC call:
+`u64(-3n)`, `BigInt(5.7)`, `u64(2n ** 70n)`, `str('a\nb')`, `str('a'.repeat(129))`. The
+128-byte `str` limit is UTF-8-correct — `'é'.repeat(64)` (128 B) passes, 65 fails.
+
+This schema is snake_case throughout for that reason (`src/arkiv.mjs`).
 
 ---
 
-## 2. The `arkiv-ethrome` MCP's `check_schema` entity-type heading pattern is unrecognized across every reasonable format tried
+## 3. `privateKeyToAccount` needs an explicit nonce manager for concurrent writes
 
-**Reporter: agent observation, reproduced.**
+```js
+Promise.allSettled(Array.from({ length: 6 }, () => wallet.createEntity(...)))
+```
 
-`check_schema` flags "No entity type heading was recognized" as a (non-blocking) warning.
-Tried, in separate submissions, all rejected:
+| Account built with | Result |
+|---|---|
+| `privateKeyToAccount(key)` | 1/6 fulfilled; 5× `EntityMutationError: Transaction failed: Execution error without revert data` |
+| `privateKeyToAccount(key, { nonceManager })` | 6/6 fulfilled, 6 distinct entity keys |
 
-- `## Entity type: agent_memory`
-- `## Entities` / `### agent_memory` with an inline `Type: agent_memory. Purpose: ...` line
-- A markdown table under an `## Entities` heading
+The error text names no nonce. Applied in `src/arkiv.mjs` (`makeClients`).
 
-All three are reasonable, readable ways to state "this is an entity type and its purpose,"
-and none tripped the recognizer. Other checks in the same tool do work — adding a
-real query-builder code block moved `queryBuilderCalls` from 0 to 1 immediately, so the
-checker is doing real pattern matching, just not on a documented (or guessable) pattern for
-this one gate.
-
-**Impact:** low — the tool itself says this is "a design suggestion, not an event
-threshold," so no submission is blocked by it. But three failed attempts is real
-wasted time for something whose intended format isn't discoverable from the tool's own
-feedback.
-
-**Suggested fix:** either document the exact expected heading pattern in the tool's
-response (it already says what's missing, could also say what would satisfy it), or widen
-the recognizer.
-
-Reproduce: call `check_schema` with any of the three formats above; `entityTypeHeadings`
-stays `0` in the `observed` block every time.
+Request: default to a nonce manager in the quickstart's account setup, or state that
+concurrent writes from one signer require one.
 
 ---
 
-## 6. Confirmed correct, re-verified live in this session, not just in isolated smoke tests
+## 4. `getEntity` returns a byte-identical error for never-created and expired entities
 
-These held up under actual product use, not just a standalone probe:
+```js
+await pub.getEntity('0x' + 'ab'.repeat(32))   // never created
+await pub.getEntity(expiredKey)               // created, read, then left to expire
+// both: NoEntityFoundError: No live entity with key 0x….
+//       It was never created, or it has been deleted or has expired.
+```
 
-- **Attribute charset is real and strictly enforced.** Every attribute in this schema
-  (`agent_id`, `memory_type`, `tag`, `importance`, `swarm_ref`) is snake_case by design,
-  specifically because camelCase is silently accepted by the client and rejected on-chain
-  (documented in this repo's `NOTES.md` before a single write was attempted, and every
-  write since has gone through clean).
-- **Compound queries work as documented.** `and(eq(...), eq(...), gte(...))` and
-  `and(eq(...), startsWith(...))` both return correct live results against real written
-  entities — not a synthetic probe, actual product queries.
-- **`ExpirationTime.fromBlocks(n)` behaves exactly as its own JSDoc says**: exact, no
-  rounding, and the receipt's `expiresAt` is confirmed to be a resolved absolute block
-  height that can differ from the requested count (see `scripts/demo-expiry.mjs` and its
-  recorded requested-vs-applied output).
-- **Expiry-as-signal is real, watched live through this app**, not just polled once:
-  the same compound query, run before and after the expiry boundary, returns a different
-  row count with no `deleteEntity` call anywhere in the codebase. `scripts/demo-expiry.mjs`
-  is the reproduction.
-- **`watchEntityEvents` requires the `webSocket()` transport and no `fromBlock`**;
-  confirmed by building the actual live feature on it (`src/arkiv.mjs`'s `watchMemories`,
-  wired into `server.mjs`) rather than a standalone test — a real websocket push updates a
-  real browser-facing feed with no polling loop anywhere in the server.
-- **`onEntityCreated` carries no attributes or payload**, only `entityKey`/`owner`/
-  `expiresAt` — confirmed against the SDK's own shipped source
-  (`node_modules/@arkiv-network/sdk/src/actions/public/watchEntityEvents.ts`) before
-  writing code against it, which avoided building the wrong thing rather than discovering
-  it live.
-- **The websocket transport recovers from a forced connection drop with zero app-side
-  reconnect code.** Killed the underlying raw socket mid-session (not a clean unsubscribe)
-  while a watcher was live; `onError` fired as expected, and a memory written immediately
-  after arrived normally with no duplicate delivery and no missed event — viem's default
-  reconnect handled it. Still untested: an outage long enough that the client misses blocks
-  entirely; that gap stays honestly described as untested, not assumed fine.
+A malformed key does differ: `InvalidValueError: Invalid key value "0xdead": 2 bytes, not
+exactly 32 bytes.`
+
+Expired entity `0x6a9bf0cc…`. Distinguishing "expired" from "unknown key" in a UI requires
+caching the expiry height at write time; `src/arkiv.mjs` (`watchMemories`) treats both as
+skip.
+
+---
+
+## 5. `check_schema` recognizes no entity-type heading format
+
+Nine distinct formats in one document, including:
+
+```
+## Entity type: agent_memory
+## Entities  /  ### agent_memory
+```
+
+→ `observed.entityTypeHeadings === 0` in every case. `queryBuilderCalls` moves 0 → 1 when a
+query-builder block is added, so other patterns in the same tool do match.
+
+Non-blocking — the tool calls it a design suggestion. Request: name the satisfying pattern in
+the response, or widen the recognizer.
+
+---
+
+## 6. Confirmed working
+
+- **Compound queries.** `and(eq, eq, gte)` and `and(eq, startsWith)` both return correct rows
+  (`src/arkiv.mjs`, `queryMemories`).
+- **`ExpirationTime.fromBlocks(n)`.** Applied expiry is an absolute height resolved at
+  inclusion and can exceed the requested count: head 346924 + 5 blocks → applied 346931.
+- **Expiry as signal.** Same query across the boundary returns 1 row → 0 rows, with no
+  `deleteEntity` call anywhere in the repo (`scripts/demo-expiry.mjs`).
+- **`onEntityCreated` carries no attributes or payload.** Keys delivered: `blockNumber`,
+  `creationFlags`, `entityKey`, `expiresAt`, `logIndex`, `owner`, `transactionHash`, `type`.
+  Attribute-based filtering needs a follow-up `getEntity` (`src/arkiv.mjs`, `watchMemories`).
+- **`webSocket()` transport with no `fromBlock`** gives a real subscription; `fromBlock` is
+  forwarded to viem (`watchEntityEvents.ts:149`), which then polls. No `poll` flag is exposed.
+- **Reconnect after a forced socket close.** Closing the raw socket mid-session fired
+  `onError` twice (`The socket has been closed.`); the next write was delivered exactly once,
+  no missed and no duplicate event, with no app-side reconnect code.
+
+Untested: an outage long enough for the client to miss blocks entirely.

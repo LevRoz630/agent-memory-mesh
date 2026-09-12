@@ -129,8 +129,9 @@ and camelCase entirely (verified empirically in pre-flight; the SDK's client-sid
 - `getEntity` throws the identical `NoEntityFoundError` for a key that never existed and a
   key that legitimately expired — confirmed live, can't tell them apart from the error
   alone. Low impact here since `watchMemories` treats both the same way already.
-- `watchEntityEvents`'s `onEntityCreated` carries no attributes or payload, only
-  `entityKey`/`owner`/`expiresAt` — confirmed against the SDK's own shipped source.
+- `watchEntityEvents`'s `onEntityCreated` carries no attributes or payload. Delivered keys:
+  `blockNumber`, `creationFlags`, `entityKey`, `expiresAt`, `logIndex`, `owner`,
+  `transactionHash`, `type`.
 - `privateKeyToAccount` needs viem's `nonceManager` passed explicitly, or concurrent
   `createEntity` calls from the same wallet collide on nonce and mostly revert (confirmed:
   1/6 landed without it, 6/6 with it). Applied in `makeClients()`.
