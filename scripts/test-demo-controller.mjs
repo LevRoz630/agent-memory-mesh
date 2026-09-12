@@ -7,7 +7,7 @@ import { createDemo, WORK_STEPS } from '../src/demo.mjs'
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
-function fakeOps({ leaseMs, verifyFails = false }) {
+function fakeOps({ leaseMs, verifyFails = false, loseLeaseFor = null }) {
   const log = []
   const steps = []
   // Watch callbacks are kept so a test can fire an outage on demand, the way a real peer-watch loop
@@ -47,13 +47,23 @@ function fakeOps({ leaseMs, verifyFails = false }) {
       return { held: true, entityKey: `claim-${agentId}-${tag}` }
     },
     async renewClaim(agentId, _entityKey, shouldContinue) {
+      let ticks = 0
       while (shouldContinue()) {
         await sleep(leaseMs / 3)
-        if (!shouldContinue()) return
+        if (!shouldContinue()) return { lost: false }
+        ticks += 1
+        // Stands in for the engine rejecting the extension because the claim already expired: the
+        // row is gone and renewClaim() reports the loss instead of throwing.
+        if (loseLeaseFor === agentId && ticks >= 2) {
+          for (const [tag, held] of claims) if (held.agentId === agentId) claims.delete(tag)
+          log.push(['lease-lost', agentId])
+          return { lost: true }
+        }
         for (const held of claims.values()) {
           if (held.agentId === agentId) held.expiresAt = Date.now() + leaseMs
         }
       }
+      return { lost: false }
     },
     async readProgress(tag) {
       return steps.filter((s) => s.tag === tag).length
@@ -155,6 +165,21 @@ const afterSecondWait = countVerifyEvents()
 check('a failing verify stops retrying', afterSecondWait === afterFirstWait)
 check('a failing verify logs a bounded number of events', afterSecondWait > 0 && afterSecondWait <= 4)
 check('the last word is that it gave up', demoF.getState().timeline.some((e) => e.text.includes('gave up verifying')))
+
+console.log('\nscenario: a lapsed lease mid-work drops the claim instead of crashing the worker\n')
+
+const opsL = fakeOps({ leaseMs: 150, loseLeaseFor: 'nova' })
+const demoL = createDemo({ ops: opsL, timings: { stepMs: 60, retryMs: 20, verifyPollMs: 20, watchStartDelayMs: 20, startDelayMs: { atlas: 400, nova: 0, sol: 40 } } })
+await demoL.start()
+await waitFor(() => opsL.log.some((l) => l[0] === 'lease-lost' && l[1] === 'nova'), 'nova to lose its lease', 5000)
+await waitFor(() => demoL.getState().phase === 'resolved', 'the incident to resolve after the lapse', 5000)
+const lapsed = demoL.getState()
+const lapsedSteps = opsL.steps.filter((s) => s.tag === lapsed.tag)
+
+check('the worker whose lease lapsed said so and dropped the claim', lapsed.timeline.some((e) => e.agentId === 'nova' && e.text.includes('lapsed before the work finished')))
+check('a lapsed lease is not reported as a crash', !lapsed.timeline.some((e) => e.text.startsWith('error:')) && !Object.values(lapsed.agents).some((a) => a.status === 'error'))
+check('the incident still resolved', lapsed.phase === 'resolved')
+check('every step still done exactly once, in order', JSON.stringify(lapsedSteps.map((s) => s.step)) === JSON.stringify(WORK_STEPS.map((_, i) => i)))
 
 console.log('\nscenario: restart mid-run\n')
 

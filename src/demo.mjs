@@ -96,14 +96,19 @@ export function createDemo({ ops, onUpdate = () => {}, timings = {} }) {
       event(run, agentId, `claimed ${tag} on Arkiv`)
       setStatus(run, agentId, 'working')
       let working = true
+      // A lapsed lease is not a crash, and renewClaim reports it instead of throwing: the claim row
+      // is gone, any agent may take the tag, and this one must stop acting as the holder.
+      let leaseLost = false
       const renewal = ops.renewClaim(agentId, claim.entityKey, () => working && live())
+        .then((result) => { if (result?.lost) leaseLost = true })
         .catch((e) => event(run, agentId, `lease renewal failed: ${e.message}`))
       let step = await ops.readProgress(tag)
       if (step > 0) event(run, agentId, `found ${step}/${WORK_STEPS.length} steps already done on Swarm, resuming`)
       let laneIndex = 0
-      while (step < WORK_STEPS.length) {
+      while (step < WORK_STEPS.length && !leaseLost) {
         await sleep(t.stepMs)
         if (!live()) return
+        if (leaseLost) break
         await ops.recordStep(agentId, tag, step, laneIndex)
         laneIndex += 1
         step += 1
@@ -114,6 +119,14 @@ export function createDemo({ ops, onUpdate = () => {}, timings = {} }) {
       working = false
       await renewal
       if (!live()) return
+      // Whatever was finished is already published to this agent's lane, so the next holder resumes
+      // from there rather than restarting. Go back around: either the tag is done, or re-claim it.
+      if (leaseLost) {
+        event(run, agentId, `lease on ${tag} lapsed before the work finished — dropping the claim`)
+        setStatus(run, agentId, 'waiting')
+        await sleep(t.retryMs)
+        continue
+      }
       // Claimed before the write, not after: finish() publishes the `done` row partway through, and
       // a verify loop that polls in that window would otherwise let the worker grade itself.
       ctl.finishedBy[tag] = agentId

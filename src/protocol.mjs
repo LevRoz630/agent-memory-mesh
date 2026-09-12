@@ -95,6 +95,21 @@ export async function tryClaim(ctx, agentId, tag, attempt = 0) {
   }
 }
 
+// The engine rejects an extension two different ways, and they are not the same news:
+//   "...would not extend the expiry..." — the new expiry wouldn't land later than the current one,
+//     because this renewal followed extremely close behind the previous one. The lease is intact.
+//   "entity 0x... expired at block N" — the entity is already gone. The lease is lost.
+// "expired" does not match /expiry/, which is how the second case used to escape as a throw that
+// aborted the renewal loop without the caller ever learning the claim had lapsed.
+function classifyExtendError(e) {
+  if (/expired/i.test(e.message)) return 'lapsed'
+  if (/expiry/i.test(e.message)) return 'too-soon'
+  return 'other'
+}
+
+// Resolves { lost: false } when it stopped because shouldContinue() went false, and { lost: true }
+// when the lease turned out to have already lapsed — the caller must stop believing it holds the
+// claim in that case. A genuinely unexpected failure still throws.
 export async function renewClaim(ctx, agentId, entityKey, leaseBlocks = CLAIM_LEASE_BLOCKS, shouldContinue = () => true) {
   const { pub, signers } = ctx
   const signer = signers.get(agentId)
@@ -107,12 +122,14 @@ export async function renewClaim(ctx, agentId, entityKey, leaseBlocks = CLAIM_LE
     try {
       await extendMemory(signer.wallet, { entityKey, ttlBlocks: leaseBlocks })
     } catch (e) {
-      // The engine rejects an extension that wouldn't move the expiry later. That happens when
-      // this renewal landed extremely close behind a previous one; treat it as a no-op, not a
-      // dropped lease.
-      if (!/expiry/i.test(e.message)) throw e
+      const kind = classifyExtendError(e)
+      if (kind === 'other') throw e
+      // Nothing left to renew: looping on a lapsed entity would keep the caller convinced it still
+      // holds a claim another agent is free to take.
+      if (kind === 'lapsed') return { lost: true }
     }
   }
+  return { lost: false }
 }
 
 export const HEARTBEAT_LEASE_BLOCKS = 8
@@ -139,7 +156,11 @@ export async function startHeartbeat(ctx, agentId, shouldContinue = () => true) 
     try {
       await extendMemory(signer.wallet, { entityKey: rows[0].key, ttlBlocks: HEARTBEAT_LEASE_BLOCKS })
     } catch (e) {
-      if (!/expiry/i.test(e.message)) throw e
+      const kind = classifyExtendError(e)
+      if (kind === 'other') throw e
+      // Same as the rows.length === 0 case above: the beat lapsed between the query and the extend,
+      // so this row is gone. Give up and let the caller start a fresh beat.
+      if (kind === 'lapsed') return
     }
     anchor = await currentBlock(pub)
   }
