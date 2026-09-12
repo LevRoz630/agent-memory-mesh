@@ -130,9 +130,12 @@ on error (`server.mjs:46-71`).
 gateway that accepts the connection and then stalls leaves a bare `fetch()` pending forever,
 hanging whichever route awaits it (`src/swarm.mjs:11-13`).
 
-**Why the plain gateway rather than an SDK.** `@snaha/swarm-id`'s client is an iframe-based
-browser passkey flow. There is no browser here, so it cannot be driven from a Node server
-(`src/swarm.mjs:1-3`).
+**Which SDK, and why not the other one.** `@ethersphere/bee-js` is a dependency and works
+server-side. `@snaha/swarm-id` — the library behind Swarm's drive UI, and the one that
+implements ACT as plain functions — does not: importing it under Node fails with
+`window is not defined`, because its single bundle touches browser globals at module scope.
+Its published `exports` map offers one entry point, so there is no server-safe subpath to
+reach past it. That is the constraint that shapes §8's access-control options.
 
 **Why app-level encryption rather than Swarm's own.** Bee supports `swarm-encrypt`
 (`Swarm.yaml:185`, the `SwarmEncryptParameter`). Using it would push the reference from 64 to
@@ -147,35 +150,55 @@ POST /bytes  Swarm-Encrypt: true     → reference 128 hex (c9650684…48e37171)
 attribute capped at 128 bytes, leaving no headroom. More to the point, the gateway would hold
 the key. App-level GCM means the gateway never sees plaintext (`src/swarm.mjs:5-6`).
 
-**The postage question, which matters.** Bee's spec lists `swarm-postage-batch-id` as a
-parameter of `POST /bytes` (`Swarm.yaml:175-182`), with `402 Payment Required` among the
-documented responses (`Swarm.yaml:206`). This repo sends no such header. It works anyway,
-verified live on 2026-09-12:
+### Postage: whose storage are we actually using
+
+Two paths exist through the same gateway, and they are not equivalent.
+
+**The `/bytes` path ignores postage entirely.** Bee's spec lists `swarm-postage-batch-id` as
+a parameter of `POST /bytes` (`Swarm.yaml:175-182`) with `402 Payment Required` among its
+responses (`Swarm.yaml:206`). On this gateway the header is decorative — verified by sending
+a deliberately invalid one:
 
 ```
-$ curl -i -X POST https://api.gateway.ethswarm.org/bytes \
-    -H 'Content-Type: application/octet-stream' --data-binary 'agent-memory-mesh probe'
-HTTP/1.1 201 Created
-X-Powered-By: Express
-swarm-tag: 23820
-{"reference":"d88102d641dfeb598e71cef9029d691c8a8e654924b9059c8fdc5731af9abbd0"}
-
-$ curl https://api.gateway.ethswarm.org/bytes/d88102d6…af9abbd0
-agent-memory-mesh probe
+POST /bytes  (no postage header)                     → 201
+POST /bytes  Swarm-Postage-Batch-Id: <our real batch> → 201
+POST /bytes  Swarm-Postage-Batch-Id: not-even-hex-garbage → 201
 ```
 
-`X-Powered-By: Express` is the tell: this is not a bare Bee node but a gateway proxy in front
-of one, and per Swarm's own documentation a gateway can "optionally manage postage stamps on
-behalf of the operator, including automatically buying new batches" and "monitoring batch
-usage and expiration"
-(https://docs.ethswarm.org/docs/develop/tools-and-features/gateway-proxy/).
+Identical responses. `X-Powered-By: Express` is the tell: this is a gateway proxy in front of
+a Bee node, and per Swarm's own documentation a gateway can "optionally manage postage stamps
+on behalf of the operator, including automatically buying new batches"
+(https://docs.ethswarm.org/docs/develop/tools-and-features/gateway-proxy/). So a 201 here is
+not evidence our batch was charged. It is evidence the gateway paid, from its own batch, for
+anyone who asks.
 
-**So the honest statement of the Swarm leg is:** we are an anonymous client of somebody
-else's postage batch, on a gateway whose documentation page is marked for deprecation. It
-works, it is genuinely content-addressed, the content is genuinely encrypted before it
-leaves this process — and the durability of what we store is a third party's decision, not
-ours. That is the single largest gap between what exists and what the design implies, and
-§8 is mostly about closing it.
+**The chunk path honours a locally signed stamp, and that is the one to use.** The Swarm team
+provided a drive: a postage batch plus the private key that owns it on Gnosis. That key signs
+a stamp per chunk locally — the batch is never in anyone else's hands and no Bee node is
+involved. Verified live:
+
+```
+chunk address: 9bfa8221cd7b3b5916d0d299668242cd35d10a35ecc4abc13a9e1898c3c12af9
+locally signed stamp for batch: 15c48475dafee866…
+POST /chunks with envelope  → 201, reference 9bfa8221…c3c12af9
+GET  /chunks/9bfa8221…      → "agent-memory-mesh: locally stamped chunk, no bee node"
+```
+
+`Stamper.fromBlank(signerKey, batchId, depth)` from `@ethersphere/bee-js` produces the
+envelope; `bee.uploadChunk(envelope, chunk.data)` sends it. The credential lives in `.env` as
+`SWARM_SIGNER_KEY` and `SWARM_POSTAGE_BATCH_ID`; the signer address is the batch's on-chain
+owner, which is what makes the stamp valid.
+
+**This is the difference between renting and owning.** On `/bytes` the durability of what we
+store is a stranger's decision. On the chunk path it is ours, bounded by the batch — and the
+batch is the live constraint: **depth 23, ~3.9 days of TTL, expiring around 2026-09-16.**
+Nothing else in this document has a deadline attached to it.
+
+**Not yet wired.** `src/swarm.mjs` still uses the unstamped `/bytes` path. Moving it to
+stamped chunks also means chunking payloads above 4 KB ourselves, and persisting the
+stamper's bucket counters between restarts — `Stamper.fromState` exists for exactly that, and
+without it a restarted process re-stamps buckets it has already filled and eventually gets
+`Bucket is full`.
 
 ---
 
@@ -372,24 +395,35 @@ any of it costs a day.
 concedes this out loud. But it means the mesh is not actually trustless between agents: Nova
 can read Atlas's content because the same process decrypts both. Two ways out:
 
-1. *Swarm ACT.* Bee ships access control natively: `POST /grantee` creates a grantee list,
-   `PATCH /grantee/{address}` adds and removes grantees, and uploads and downloads carry
-   `swarm-act` and `swarm-act-history-address` (`Swarm.yaml:31-170, 186-187`). Atlas
-   publishes encrypted under its own key and grants Nova's public key. Revocation is a
-   grantee-list update, not a key rotation. This is the version that makes "content
-   addressed, publisher controlled" true rather than aspirational.
-2. *Per-agent keys with out-of-band exchange.* Simpler, and worse — it pushes key
-   distribution somewhere this project does not model.
+ACT is what this wants to be. Bee ships access control natively: `POST /grantee` creates a
+grantee list, `PATCH /grantee/{address}` adds and removes grantees, and transfers carry
+`swarm-act` and `swarm-act-history-address` (`Swarm.yaml:31-170, 186-187`). Atlas publishes
+under its own key and grants Nova and Sol; revocation is a list update, not a key rotation.
+That is the version where "content addressed, publisher controlled" is true rather than
+aspirational, and it is the spine of the incident workflow in §7.
 
-ACT is the right answer if the gateway in front of us supports those endpoints. **That is
-worth checking before anything else**, because it is the difference between a real design
-and a slide.
+**Three routes to it, all with a real cost. This is the open decision.**
 
-**Our own postage batch.** Buying a batch (`POST /stamps/{amount}/{depth}`,
-`Swarm.yaml:2197`) and sending `swarm-postage-batch-id` ourselves converts "it works on a
-public gateway" into "we pay for our own storage with a stated TTL." It also makes the
-durability story checkable: `GET /stamps/{batch_id}` reports batch usage and expiry
-(`Swarm.yaml:2114`). Cost and depth are the open questions.
+1. *A Bee node of our own.* `bee-js` already exposes `createGrantees`, `getGrantees` and
+   `patchGrantees`, so this is a config change, not new code — but those methods call
+   `/grantee`, which the public gateway answers with 404. A node was stood up and torn down
+   during this work: it runs, deploys a chequebook on first boot, and takes an unmeasured
+   time to finish initialising. Feasible, not free.
+2. *Implement ACT ourselves.* The format is not a secret: a JSON manifest of
+   `{lookupKey, encryptedAccessKey}` entries, each grantee's lookup key derived by ECDH
+   against the publisher's key, uploaded as an ordinary chunk. `@snaha/swarm-id` does exactly
+   this client-side, which proves a node is not strictly required — but that library cannot
+   be imported server-side (§4), so this means writing and testing the crypto ourselves.
+3. *Keep app-level AES and say so.* What exists today. Honest, already working, and the thing
+   §7's grant-forward workflow cannot be built on.
+
+The choice is really between (1) before the deadline and (3) with a clear-eyed slide. (2) is
+the best design and the worst use of the remaining days.
+
+**Postage is solved, and is now a clock.** The drive credential means we sign our own stamps
+against our own batch (§4) — "we pay for our own storage" is no longer future work. What
+replaced it is an expiry date: the batch runs out around 2026-09-16, and topping it up is an
+on-chain action against the batch, not something the gateway will do for us.
 
 **Claims as feeds rather than as new entities.** Right now every claim is a fresh Arkiv
 entity with a fresh Swarm blob. A Swarm feed gives "static addresses for your mutable
@@ -422,10 +456,11 @@ boundary.
 
 ## 9. What to ask mentors
 
-1. Does the public gateway support the ACT endpoints (`/grantee`, `swarm-act`)? If not,
-   per-agent readable content needs our own Bee node, and that changes the demo's shape.
-2. Is anonymous upload through `api.gateway.ethswarm.org` something to depend on for a
-   judged submission, or should we buy a batch before the deadline regardless of cost?
+1. **The batch expires around 2026-09-16.** Does it top up, or do we need a second drive?
+   Every other Swarm question is downstream of this one.
+2. ACT needs either our own Bee node or our own implementation of the grantee manifest
+   (§8) — the public gateway 404s `/grantee` and the library that does it client-side is
+   browser-only. Which is the right call with the time left?
 3. Now that each agent signs for itself, no agent can release or renew another's claim —
    the engine gates both on ownership. Is "lapsing is the only way abandoned work frees up"
    the strongest version of the argument, or does a mentor read it as a missing feature?
@@ -433,9 +468,10 @@ boundary.
    spend the twenty lines on the tie-break so the question never comes up?
 5. Feeds for mutable task state: worth the signing complexity inside the remaining time, or
    is "one entity per state change, expiring" the honest primitive to show?
-6. For the Arkiv feedback report — the four findings in `feedback.md` all reproduce. Is
-   there a Swarm-side equivalent worth filing, given the gap between what Bee's spec
-   requires (a postage batch) and what the public gateway accepts (no header at all)?
+6. For the Arkiv feedback report — the four findings in `feedback.md` all reproduce. The
+   Swarm side now has one of the same shape: `POST /bytes` returns 201 for a valid batch id,
+   an invalid one, and none at all, so a caller cannot tell whether their own postage was
+   spent. Worth filing?
 
 ---
 
@@ -446,7 +482,8 @@ boundary.
 | Expiry is exact, applied value can differ | `node --env-file=.env scripts/demo-expiry.mjs`                     |
 | A claim lapses with nothing watching      | `node --env-file=.env scripts/watch-claim.mjs nova`                |
 | All four Arkiv findings                   | `npm run feedback:repro` (exit 0 = reproduced)                     |
-| Gateway accepts unstamped uploads         | the two`curl` commands in §4                                      |
+| Gateway ignores the postage header        | the three`POST /bytes` calls in §4                                |
+| A locally stamped chunk uploads           | the`Stamper` / `uploadChunk` sequence in §4                      |
 | Each agent signs as itself                | the three addresses in §7, on any block explorer for Tiramisu       |
 | SDK behaviours                            | the cited paths under`node_modules/@arkiv-network/sdk/src/`        |
 | Bee endpoint contracts                    | `openapi/Swarm.yaml` in `ethersphere/bee`, line numbers as cited |
