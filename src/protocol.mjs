@@ -115,6 +115,31 @@ export async function renewClaim(ctx, agentId, entityKey, leaseBlocks = CLAIM_LE
   }
 }
 
+export const HEARTBEAT_LEASE_BLOCKS = 8
+
+export async function startHeartbeat(ctx, agentId, shouldContinue = () => true) {
+  const { pub, signers } = ctx
+  const signer = signers.get(agentId)
+  if (!signer) throw new Error(`no signer configured for agentId "${agentId}"`)
+  const tag = `agent-${agentId}`
+  await writeMemory(signer.wallet, {
+    agentId, memoryType: 'heartbeat', tag, importance: 1, content: {}, ttlBlocks: HEARTBEAT_LEASE_BLOCKS,
+  })
+  const renewEveryBlocks = Math.max(1, Math.floor(HEARTBEAT_LEASE_BLOCKS / 3))
+  while (shouldContinue()) {
+    const start = await currentBlock(pub)
+    await waitForBlock(pub, start + BigInt(renewEveryBlocks))
+    if (!shouldContinue()) break
+    const rows = await queryByTagAndType(pub, { tag, memoryType: 'heartbeat', limit: 1 })
+    if (rows.length === 0) return // agent was already considered down elsewhere; stop renewing
+    try {
+      await extendMemory(signer.wallet, { entityKey: rows[0].key, ttlBlocks: HEARTBEAT_LEASE_BLOCKS })
+    } catch (e) {
+      if (!/expiry/i.test(e.message)) throw e
+    }
+  }
+}
+
 export async function takeOver(ctx, tag) {
   const { pub } = ctx
   const lanes = await queryByTagAndType(pub, { tag, memoryType: 'lane' })
