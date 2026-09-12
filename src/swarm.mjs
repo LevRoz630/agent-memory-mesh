@@ -12,9 +12,10 @@
 import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto'
 
 const GATEWAY = process.env.SWARM_GATEWAY ?? 'https://api.gateway.ethswarm.org'
-// The gateway occasionally accepts a connection and then stalls instead of erroring
-// (confirmed live: a 20-way concurrent download batch once hung 301s before failing) — with
-// no client-side ceiling that hangs whichever route awaits it. Bound every call instead.
+// A bare fetch() against a gateway that accepts the connection and then stalls stays
+// pending indefinitely, hanging whichever route awaits it — /api/query and /api/recent both
+// fan out concurrent downloads. Bound every call instead.
+// Reproduction: scripts/feedback/09-fetch-timeout.mjs
 const FETCH_TIMEOUT_MS = 8000
 
 /**

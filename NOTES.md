@@ -164,6 +164,8 @@ raw.toString('utf8').includes('CANARY_12345')  // false
 raw.length - JSON.stringify({ canary: 'CANARY_12345' }).length  // 28 = IV + authTag
 ```
 
+Reproduce: `scripts/feedback/06-gateway-stores-ciphertext.mjs`
+
 **Encryption costs content-addressed dedup.** The raw gateway returns one reference for
 identical bytes. `encrypt()` draws a fresh random IV per call, so the app never uploads
 identical bytes twice:
@@ -174,6 +176,8 @@ a !== b  // true
 ```
 
 A deterministic IV would restore dedup and leak which memories are identical.
+
+Reproduce: `scripts/feedback/07-encryption-defeats-dedup.mjs` (shows both halves)
 
 **Reference length.** A plain reference is 64 hex chars; an encrypted one (Swarm's own
 `Swarm-Encrypt` header) is 128 — exactly Arkiv's `MAX_STRING_BYTES`:
@@ -186,6 +190,8 @@ str('0x' + 'a'.repeat(128))  // InvalidValueError: 130 UTF-8 bytes exceeds the 1
 Not hit in this build — app-level encryption yields plain 64-hex refs — but any switch to
 `Swarm-Encrypt` must store refs without the `0x` prefix.
 
+Reproduce: `scripts/feedback/08-ref-length-landmine.mjs`
+
 **8s timeout on both calls.** A bare `fetch()` against a server that accepts a connection and
 never responds stays pending indefinitely; `/api/query` and `/api/recent` fan out concurrent
 downloads via `Promise.all`, so one stalled connection hangs the whole response:
@@ -194,8 +200,10 @@ downloads via `Promise.all`, so one stalled connection hangs the whole response:
 const s = createServer(() => {})              // accepts, never responds
 process.env.SWARM_GATEWAY = `http://127.0.0.1:${s.address().port}`
 await downloadMemory('0'.repeat(64))          // TimeoutError at ~8001ms
-                                              // without the signal: still pending at 30s
+                                              // without the signal: still pending at 24s
 ```
+
+Reproduce: `scripts/feedback/09-fetch-timeout.mjs`
 
 **Untested:** retention. The gateway sponsors its own postage and may garbage-collect
 content; this build has not verified durability over time.

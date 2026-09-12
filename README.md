@@ -52,6 +52,9 @@ the actual Mission 03 artifact; see `NOTES.md` for a recorded proof.
 - `npm run demo:expiry` (`scripts/demo-expiry.mjs`) — Mission 02 evidence, reproducible:
   writes a short-lived memory, queries it (present), waits past its expiry block, queries
   again (gone), with no `deleteEntity` call anywhere.
+- `npm run feedback:repro` (`scripts/feedback/`) — runs every finding in
+  [`feedback.md`](feedback.md) against the live network and prints the observed values. Add
+  `-- 03` to run a single one. Each script exits 0 when its finding reproduced.
 - `npm run ens:register -- <label>` (`scripts/ens-register.mjs`) — registers a flat ENSv2
   name on Sepolia (commit-reveal flow). Needs `PRIVATE_KEY` (a Sepolia-funded wallet) in the
   environment.
