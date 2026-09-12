@@ -1,86 +1,78 @@
 # Pitch prep — Agent Memory Mesh
 
-Working notes for the live ≤3-minute demo/pitch. The submission-facing file is
-`README.md`; the technical reference is `NOTES.md`. Ordered by judging weight — see the
-scoring table in `NOTES.md`.
+Working notes for the live ≤3-minute demo/pitch. Submission-facing file: `README.md`.
+Technical reference: `NOTES.md`. Ordered by judging weight.
 
-## Structure, ordered by judging weight
+## 1. Why Arkiv / Web3 database — 30%
 
-### 1. Why Arkiv / Web3 database — 30% — open here
+Opening line: "Agent memory needs three things a normal database fakes: whose it is
+across apps, when it should disappear, and how another process learns it changed. Arkiv
+gives us the first two natively — expiry with no delete call — and the same websocket
+gives us the third."
 
-Talking point: multi-agent memory needs to answer three things a Web2 DB fakes — who owns
-this memory across host apps, what happens to memory that shouldn't persist forever
-(without a cron job), and how a second process learns something changed without polling.
-Arkiv answers the second natively (real expiry, no delete call); the websocket layer
-answers the third.
+Target: ~25s
 
-- [ ] tighten this to one sentence for the opening line
-- Target: ~25–30s
+## 2. Technical execution — 25%
 
-### 2. Technical execution — 25% — the live demo
+`npm run demo` runs this whole sequence (mission-control page open in the browser):
 
-Beats (full script in `NOTES.md`):
-0. Terminal on one side, mission-control page open on the other. `npm run agent -- atlas
-   "remember that I prefer dark mode and 24-hour time"` — a real Claude session decides
-   to call `remember`, the panel's live feed and event log update on the real websocket
-   as it happens. This is the beat that shows an actual agent using this: a model
-   deciding on its own to call a tool.
-1. Fresh process: `npm run agent -- nova "..."` — Nova's independent session decides to
-   query `agentId: atlas` and recalls what Atlas just stored — cross-agent, cross-session,
-   proving the "portable memory" claim rather than stating it.
-2. Compound query live in the browser: `agent_id = X AND memory_type = Y AND importance
-   >= N`.
-3. Short-lived memory disappears from that same query, no delete call in the code shown
-   (Mission 02) — show requested vs. applied expiry from the receipt.
-4. One irrelevant event that does *not* update the live panel — proves the filter is real.
+1. Atlas remembers — a real Claude session decides to call `remember`; the live feed and
+   event log update over the real websocket as it happens.
+2. Nova recalls, an independent session — decides to query `agentId: atlas` and finds
+   what Atlas stored: cross-agent, cross-session, live.
+3. Compound query: `agent_id = X AND memory_type = Y AND importance >= N`.
+4. The memory disappears from that same query on its own — no delete call anywhere
+   (Mission 02); requested vs. applied expiry visible from the receipt.
 
-- [ ] decide: two browser tabs side by side, or two separate windows/screens for the
-      browser-driven beats?
-- [ ] rehearse the agent commands once beforehand — model wording varies run to run
-- Target: ~90–110s
+Not automated, point at it manually: one irrelevant chain event that doesn't touch the
+live panel — the code that proves the filter is real.
 
-### 3. Usefulness and adoption potential — 20% — currently the weakest section, nail this
+- [ ] rehearse `npm run demo` once beforehand — model wording varies run to run
+- [ ] two windows side by side, or switch between terminal/browser on one screen?
 
-Draft answer (from working session, needs a read-through before it's final):
+Target: ~90–110s
 
-> Teams building multi-agent AI systems for enterprises hit this exact wall — agent memory
-> locked to one framework's session store, no native expiry, no identity separate from an
-> API key. We're not guessing at that problem: we're building an AI agentic deployment for
-> enterprises at the **HPE & NVIDIA Agentic AI Hackathon** (HPE Geneva Customer Innovation
-> Center, Sept 14 2026, part of Swiss {ai} Weeks), presenting to the companies in the room
-> as part of the solution — Agent Memory Mesh is the memory layer for that deployment. Path
-> to the first 100: open-source now so that event's own agent builders can point at it
-> directly, publish the pattern into framework-agnostic agent communities (LangChain/
-> CrewAI/AutoGen-style builders — the ENS+Swarm reference is readable by any client, not
-> tied to one runtime), and reuse it ourselves at every hackathon after this one.
+## 3. Usefulness and adoption — 20%
 
-- [x] confirm comfort naming HPE/NVIDIA explicitly before this goes in `README.md` or on camera
-- [ ] condense to one spoken sentence
-- Target: ~30s
+Full paragraph lives in `README.md`, "Who this is for." Spoken version: "We're solving
+this for ourselves first — Agent Memory Mesh is the memory layer for the AI agentic
+deployment we're building at the HPE & NVIDIA hackathon in Geneva, two days from now,
+open-sourced so any agent builder there, on any framework, can point at it directly."
 
-### 4. Arkiv feedback — 25% — close
+Target: ~30s
 
-- Name it explicitly: "we filed N reproducible findings against the SDK during this build —
-  full report in `feedback.md`."
-- Pick 1–2 headline findings worth saying out loud (candidates as of now: the nonce-manager
-  gap on concurrent writes from one wallet, the typed-wrapper read/write asymmetry).
-- This criterion is scored from `feedback.md` itself — saying it out loud on camera just
-  claims credit for work that's otherwise invisible in a 3-minute clip.
-- Target: ~15–20s
+## 4. Arkiv feedback — 25%
+
+Line: "We filed 5 Arkiv findings and 4 Swarm reproductions this build, each with a
+runnable script — full report in `feedback.md`."
+
+Headline finding to say out loud: the nonce-manager gap — 1/6 concurrent writes from one
+wallet landed without it, 6/6 with it. Second choice if there's time: the typed-wrapper
+read/write asymmetry (write takes `str()`/`u64()`, read hands back `{type, value}`).
+
+This criterion scores from `feedback.md` itself — naming it out loud just claims credit
+for otherwise-invisible work.
+
+Target: ~15–20s
 
 ## Timing budget (≤3:00)
 
 | Section | Target |
 |---|---|
 | Why Arkiv | 0:00–0:25 |
-| Technical demo (now includes the agent beats) | 0:25–2:15 |
+| Technical demo | 0:25–2:15 |
 | Usefulness/adoption | 2:15–2:40 |
 | Arkiv feedback | 2:40–3:00 |
 
-## Open items
+## Gaps to discuss
 
-- [ ] rehearse once against the deployed URL before recording
-- [ ] decide who presents which section
-- [x] finalize the usefulness paragraph above and copy the agreed version into `README.md`
-- [ ] re-check `hub.arkiv.network/ethrome` once more before judging — noted in `NOTES.md`
-      as a page that's changed mid-event before
+- **Undocumented Arkiv finding:** `select('*')` silently omits `owner` on the live
+  Tiramisu node even though the SDK correctly requests it — found and fixed today in
+  `src/arkiv.mjs`. Strong, fresh, verified-live finding. Worth adding to
+  `feedback.md`/`scripts/feedback/` before submission? That directory is a separate
+  active workstream, flagging it here instead of editing it directly.
+- **Physical setup:** two windows/screens vs. switching on one, for the terminal + browser
+  beats.
+- **Who presents which section.**
+- **`hub.arkiv.network/ethrome` has changed mid-event before** (noted in `NOTES.md`) —
+  worth one more check before judging.
