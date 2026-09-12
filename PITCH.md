@@ -7,12 +7,12 @@ want to check (block heights, transaction hashes, the `deleteEntity` count) live
 
 Judging weights, and where each one is earned:
 
-| Weight | Criterion | Clip |
-|---|---|---|
-| 30% | Why Arkiv / Web3 database. Needs the capability, the query, and the trade-off against a Web2 database | 1 |
-| 25% | Technical execution. Needs a working flow beginning to end, with the Arkiv reads and writes behind it | 2 |
-| 20% | Usefulness and adoption. Needs the users, their problem, and a route to the first 100 | 3 |
-| 25% | Arkiv feedback. Needs specific observations, what worked, and reproducible problems | 4 |
+| Weight | Criterion                                                                                             | Clip |
+| ------ | ----------------------------------------------------------------------------------------------------- | ---- |
+| 30%    | Why Arkiv / Web3 database. Needs the capability, the query, and the trade-off against a Web2 database | 1    |
+| 25%    | Technical execution. Needs a working flow beginning to end, with the Arkiv reads and writes behind it | 2    |
+| 20%    | Usefulness and adoption. Needs the users, their problem, and a route to the first 100                 | 3    |
+| 25%    | Arkiv feedback. Needs specific observations, what worked, and reproducible problems                   | 4    |
 
 ## Before recording
 
@@ -30,21 +30,25 @@ Judging weights, and where each one is earned:
 - Record the screen with live narration as a guide track, then re-record the voiceover to
   picture so it lands at 3:00 without drifting.
 
-## Clip 1, 0:00 to 0:36, why Arkiv
+Clip 0
 
-Show: the mission-control page, idle, one window, nothing running.
+Hey so I am Lev and I decided to build a share-able memory mesh for agents based on the provided software
 
-Overlay: project name, lower third, first five seconds.
+This is a storage system that uses Arkiv to idnex the memories written adn signed by agents stored on swarm.
+
+## Clip 1, 0:00 to 0:36, why Web3 / Arkiv
+
+Show: tthe visusalisation.png
 
 Say, 89 words:
 
-> Every agent framework keeps memory in one bucket. A vector DB, a Postgres table, a JSON
-> blob. That bucket can't say whose memory it is once the host app changes, can't expire
-> anything without a cleanup job, and can't tell a second agent that something moved.
->
-> Arkiv does all three. Our whole product is one query: agent_id atlas, memory_type task,
-> importance over seven, on typed attributes. The trade-off is honest: a write costs gas and
-> waits for a block, so Arkiv holds the index and Swarm holds the content.
+
+Every agent framework keeps memory in one bucket. A vector DB, a Postgres table, a JSON
+blob. That bucket can't say whose memory it is once the host app changes, can't expire
+anything without a cleanup job, and can't tell a second agent that something moved.
+
+Arkiv does all three. Our whole product is one query: agent_id atlas, memory_type task,
+importance over seven, on typed attributes.  So you can filter data as in Web2 databases if requried, with multi-agent workflows being facilited by agent signatures ont he memories that allow one agent to reference the toehr and leave a clear trace of what was written and by whom.
 
 ## Clip 2, 0:36 to 2:12, the demo
 
@@ -120,13 +124,13 @@ Say, 54 words:
 
 ## Timing
 
-| Clip | Window | Spoken words | Talking time |
-|---|---|---|---|
-| 1, why Arkiv | 0:00–0:36 | 89 | 0:37 |
-| 2, demo | 0:36–2:12 | 177 | 1:13 |
-| 3, who it's for | 2:12–2:40 | 66 | 0:27 |
-| 4, feedback | 2:40–3:00 | 54 | 0:22 |
-| Total | 3:00 | 386 | 2:39 |
+| Clip            | Window     | Spoken words | Talking time |
+| --------------- | ---------- | ------------ | ------------ |
+| 1, why Arkiv    | 0:00–0:36 | 89           | 0:37         |
+| 2, demo         | 0:36–2:12 | 177          | 1:13         |
+| 3, who it's for | 2:12–2:40 | 66           | 0:27         |
+| 4, feedback     | 2:40–3:00 | 54           | 0:22         |
+| Total           | 3:00       | 386          | 2:39         |
 
 386 words at 145 a minute is 2:39 of talking. The other 21 seconds are commands executing in
 clip 2. If a take runs short, the spare seconds belong to beat 3 and to holding on the expiry
