@@ -32,32 +32,32 @@ Judging weights, and where each one is earned:
 
 Clip 0
 
-Hey so I am Lev and I decided to build a share-able memory mesh for agents based on the provided software
+Hey so I am Lev and I decided to build a shareable memory mesh for agents based on the provided software
 
-This is a storage system that uses Arkiv to idnex the memories written adn signed by agents stored on swarm.
+This is a storage system that uses Arkiv to index the memories written and signed by agents, stored on Swarm.
 
 ## Clip 1, 0:00 to 0:36, why Web3 / Arkiv
 
-Show: tthe visusalisation.png
+Show: the visualisation.png
 
-Say, 89 words:
+Say:
 
 Every agent framework keeps memory in one bucket. A vector DB, a Postgres table, a JSON
 blob. That bucket can't say whose memory it is once the host app changes, can't expire
 anything without a cleanup job, and can't tell a second agent that something moved.
 
 Arkiv does all three. Our whole product is one query: agent_id atlas, memory_type task,
-importance over seven, on typed attributes.  So you can filter data as in Web2 databases if requried, with multi-agent workflows being facilited by agent signatures ont he memories that allow one agent to reference the toehr and leave a clear trace of what was written and by whom.
+importance over seven, on typed attributes. So you can filter data as in Web2 databases if required, with multi-agent workflows being facilitated by agent signatures on the memories that allow one agent to reference the other and leave a clear trace of what was written and by whom.
 
 ## Clip 2, 0:36 to 2:12, the demo
 
 Show: terminal left, mission-control page right, both in frame the entire time. Never
 full-screen the terminal. The right half moving on its own is the point of this clip.
 
-161 spoken words, about 67 seconds, so roughly 29 seconds of the window is commands running.
+About 67 seconds, so roughly 29 seconds of the window is commands running.
 Four beats, one continuous take.
 
-Beat 1. Run `npm run agent -- atlas "remember that I prefer dark mode and 24-hour time"`.
+Beat 1. Run `node --env-file=.env scripts/agent-chat.mjs atlas "remember that I prefer dark mode and 24-hour time"`.
 
 > This is Atlas, a real Claude session with two tools, remember and recall. I've told it a preference, and it decided by itself to split that into two memories, one per preference, each with its own lifetime.
 >
@@ -85,7 +85,7 @@ Overlay, three seconds: `atlas-ethrome26.eth · nova-ethrome26.eth · ENSv2 beta
 with both registration transaction hashes. ENS gets no spoken words, so this card is where
 it earns its place.
 
-Say, 66 words:
+Say:
 
 > Who needs this: me, this week. Our agents' memory is locked to one framework's session
 > store, and an agent's identity is just an API key. On September 14th we present Agent
@@ -97,21 +97,20 @@ Say, 66 words:
 
 Overlay: `feedback.md · 4 findings · 4 runnable scripts`.
 
-Say, 54 words:
+Say:
 
 > Four findings in `feedback.md`, each with a script you can run yourself. The sharpest:
 > Arkiv's concurrent writes silently drop without viem's nonce manager, one of six landed, no error mentioning a nonce. Wire in the nonce manager and it's six of six. 
 
 ## Timing
 
-| Clip            | Window     | Spoken words | Talking time |
-| --------------- | ---------- | ------------ | ------------ |
-| 1, why Arkiv    | 0:00–0:36 | 89           | 0:37         |
-| 2, demo         | 0:36–2:12 | 161          | 1:07         |
-| 3, who it's for | 2:12–2:40 | 66           | 0:27         |
-| 4, feedback     | 2:40–3:00 | 54           | 0:22         |
-| Total           | 3:00       | 370          | 2:33         |
+| Clip            | Window     | Talking time |
+| --------------- | ---------- | ------------ |
+| 1, why Arkiv    | 0:00–0:36 | 0:37         |
+| 2, demo         | 0:36–2:12 | 1:07         |
+| 3, who it's for | 2:12–2:40 | 0:27         |
+| 4, feedback     | 2:40–3:00 | 0:22         |
+| Total           | 3:00       | 2:33         |
 
-370 words at 145 a minute is 2:33 of talking. The other 27 seconds are commands executing in
-clip 2. If a take runs short, the spare seconds belong to holding on the expiry output a beat
-longer.
+The other 27 seconds are commands executing in clip 2. If a take runs short, the spare seconds
+belong to holding on the expiry output a beat longer.
