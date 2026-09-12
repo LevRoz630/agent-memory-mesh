@@ -63,6 +63,12 @@ function startWatch() {
         content,
       })
     },
+    onExtended: ({ entityKey, owner, expiresAt }) => {
+      broadcast({ type: 'extended', entityKey, owner, expiresAt: String(expiresAt) })
+    },
+    onDeleted: ({ entityKey }) => {
+      broadcast({ type: 'deleted', entityKey })
+    },
     onError: (err) => {
       console.error('watch error:', err.message)
       broadcast({ type: 'watch_error', message: err.message })
