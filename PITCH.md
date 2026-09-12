@@ -1,8 +1,8 @@
 # Pitch prep — Agent Memory Mesh
 
-Working notes for the live ≤3-minute demo/pitch, not the submission-facing file (that's
-`README.md`) or the technical reference (`NOTES.md`). Ordered by what's actually weighted
-in judging, not chronologically — see the scoring table in `NOTES.md`.
+Working notes for the live ≤3-minute demo/pitch. The submission-facing file is
+`README.md`; the technical reference is `NOTES.md`. Ordered by judging weight — see the
+scoring table in `NOTES.md`.
 
 ## Structure, ordered by judging weight
 
@@ -23,8 +23,8 @@ Beats (full script in `NOTES.md`):
 0. Terminal on one side, mission-control page open on the other. `npm run agent -- atlas
    "remember that I prefer dark mode and 24-hour time"` — a real Claude session decides
    to call `remember`, the panel's live feed and event log update on the real websocket
-   as it happens. This is the beat that answers "does an actual agent use this" — not
-   asserted, shown: a model deciding to call a tool, not a human clicking a button.
+   as it happens. This is the beat that shows an actual agent using this: a model
+   deciding on its own to call a tool.
 1. Fresh process: `npm run agent -- nova "..."` — Nova's independent session decides to
    query `agentId: atlas` and recalls what Atlas just stored — cross-agent, cross-session,
    proving the "portable memory" claim rather than stating it.
@@ -55,7 +55,7 @@ Draft answer (from working session, needs a read-through before it's final):
 > tied to one runtime), and reuse it ourselves at every hackathon after this one.
 
 - [ ] confirm comfort naming HPE/NVIDIA explicitly before this goes in `README.md` or on camera
-- [ ] one sentence, not the whole paragraph, for the spoken version
+- [ ] condense to one spoken sentence
 - Target: ~30s
 
 ### 4. Arkiv feedback — 25% — close
@@ -64,8 +64,8 @@ Draft answer (from working session, needs a read-through before it's final):
   full report in `feedback.md`."
 - Pick 1–2 headline findings worth saying out loud (candidates as of now: the nonce-manager
   gap on concurrent writes from one wallet, the typed-wrapper read/write asymmetry).
-- This criterion is scored from the file, not the video — saying it out loud just claims
-  credit for work that's otherwise invisible in a 3-minute clip.
+- This criterion is scored from `feedback.md` itself — saying it out loud on camera just
+  claims credit for work that's otherwise invisible in a 3-minute clip.
 - Target: ~15–20s
 
 ## Timing budget (≤3:00)
@@ -79,7 +79,7 @@ Draft answer (from working session, needs a read-through before it's final):
 
 ## Open items
 
-- [ ] rehearse once against the deployed URL, not localhost, before recording
+- [ ] rehearse once against the deployed URL before recording
 - [ ] decide who presents which section
 - [ ] finalize the usefulness paragraph above and copy the agreed version into `README.md`
 - [ ] re-check `hub.arkiv.network/ethrome` once more before judging — noted in `NOTES.md`

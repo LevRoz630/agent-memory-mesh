@@ -59,7 +59,7 @@ const ETH_REGISTRAR_ABI = parseAbi([
   'function register(string label, address owner, bytes32 secret, address subregistry, address resolver, uint64 duration, address paymentToken, bytes32 referrer) returns (uint256 tokenId)',
 ])
 
-// Explicit RPC, not viem's default rotation — one of those endpoints hung indefinitely on
+// Explicit RPC instead of viem's default rotation — one of those endpoints hung indefinitely on
 // a live run (no error, no response) rather than failing fast. publicnode's Sepolia
 // endpoint answered eth_getBalance in well under a second when checked directly with curl.
 const RPC_URL = 'https://ethereum-sepolia-rpc.publicnode.com'

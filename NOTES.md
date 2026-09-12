@@ -8,15 +8,15 @@ file is `README.md`; the scored Arkiv feedback report is `feedback.md`.
 
 An AI agent's memory, implemented as three separate concerns instead of one database:
 
-- **Identity** — an ENSv2 name on Sepolia. The agent's name is not a display string, it's
-  the thing other systems resolve to find the agent.
+- **Identity** — an ENSv2 name on Sepolia: the thing other systems resolve to find the
+  agent.
 - **Content** — encrypted, content-addressed blobs on Swarm. The actual memory: what the
   agent knows, what it was told, what it decided.
-- **Index** — typed, queryable, expiring records on Arkiv. Not the memory itself, a pointer
-  to it plus enough metadata to search, filter, and decide when it should disappear.
+- **Index** — typed, queryable, expiring records on Arkiv: a pointer to the content plus
+  enough metadata to search, filter, and decide when it should disappear.
 
 Two agent instances demonstrate it: one writes a memory, the other's view of the world
-updates without a refresh, over a live subscription, not a polling loop. A short-lived
+updates without a refresh, over a live websocket subscription. A short-lived
 memory expires from queries on its own, with no delete call, because its lease ran out.
 
 ## Why this shape
@@ -40,10 +40,11 @@ table this year:
   index that still requires someone to build the cleanup path. Here expiry is native — the
   record vanishes from queries when its lease is up, nothing else has to run.
 
-None of the three pieces stands in for the others. Swarm is not a database — it has no
-query language. Arkiv is not file storage — its own docs say so. ENS is not storage or a
-database — it's a name that resolves to something. The product only exists at the seam
-between them, which is also the reason no single sponsor's brief covers it alone.
+None of the three pieces can do what the other two do. Swarm has no query language —
+it stores encrypted blobs. Arkiv's own docs describe it as an index, and index is the
+role it plays here: metadata and expiry, no bulk storage. ENS resolves a name to
+something; it holds no data of its own. The product only exists at the seam between
+them, which is also why no single sponsor's brief covers it alone.
 
 ## Architecture
 
@@ -77,7 +78,7 @@ EXPIRY
   querying the same filter before and after the boundary returns a different row count
 ```
 
-## Real-agent proof, not a human-driven form
+## Real-agent proof
 
 The browser UI (write form + live feed) proves the Arkiv/Swarm/ENS plumbing works, but a
 human clicking "write memory" doesn't prove an actual AI agent would use it — that's a
@@ -91,8 +92,8 @@ had Atlas's session split that into two separate `remember` calls on its own (on
 preference), each with its own tag and a self-chosen long `ttlBlocks` for a durable
 preference. A second, fully independent process, `npm run agent -- nova "..."`, had
 Nova's session first check its own agent id (nothing), then reason its way to querying
-`agentId: atlas` instead, retrieve both preferences, and answer correctly — proving
-cross-agent, cross-session portability, not cross-tab. The server's real
+`agentId: atlas` instead, retrieve both preferences, and answer correctly, proving
+cross-agent, cross-session portability. The server's real
 `watchEntityEvents` watcher logged both writes as they happened (`live: agent_memory
 written by 0x9F59...`), meaning the mission-control page picks these up over the same
 live websocket whether the write came from the browser form or from an agent's own
@@ -105,16 +106,15 @@ importance, a pointer to the Swarm content, and a native expiry. Never the memor
 itself.
 
 **Schema — entity type `agent_memory`.** One entity per memory. No sub-types, no separate
-entity per agent — `agent_id` is a filterable attribute, not a partition key, because the
-actual product query is always "this agent's memories of this kind," never "give me
-everything."
+entity per agent — `agent_id` is a filterable attribute. The actual product query is
+always "this agent's memories of this kind," never "give me everything."
 
 | Attribute | Type | Why it's an attribute |
 |---|---|---|
 | `agent_id` | `str` | Primary narrowing filter — always present in the write path's own query |
 | `memory_type` | `str` | `fact` \| `task` \| `preference` \| `event` — equality filter |
 | `tag` | `str` | Short topic string, `STARTSWITH`-filterable |
-| `importance` | `u64` | 0–10 salience, range-filterable (`>= n`) — what makes a query compound, not a single equality lookup |
+| `importance` | `u64` | 0–10 salience, range-filterable (`>= n`), giving a query compound depth beyond a single equality lookup |
 | `swarm_ref` | `str` | Pointer to the encrypted content on Swarm. Never the content itself |
 | `$expiresAt` | native | The lease |
 
@@ -132,15 +132,15 @@ and camelCase entirely (verified empirically in pre-flight; the SDK's client-sid
 - `extendEntity` is a true in-place lease — same entity key, same payload, same owner, only
   the expiry moves. Confirmed 7/7 live. Extension **sets** the expiry, it does not add to
   it, and a shorter extension is rejected by the engine. Deliberately not used in this
-  schema — working memory is meant to lapse, not be renewed.
-- Expiry emits no event. Nothing can watch for "this just expired" — the demo has to poll a
-  query across the expiry boundary, not subscribe to an expiry notification.
+  schema — working memory is meant to lapse on its own.
+- Expiry emits no event, so nothing can watch for "this just expired" — the demo polls a
+  query across the expiry boundary instead.
 - A live websocket subscription requires the `webSocket()` transport and **no** `fromBlock`
   argument. Passing `fromBlock` either silently drops the replay (with `poll: false`) or
   forces the watcher into HTTP polling despite the open socket (viem's default).
   `watchEntityEvents` itself exposes no `poll` flag, so this decision is made entirely by
   transport choice.
-- `executeBatch` returns `createdEntities`, not `entityKeys`.
+- `executeBatch`'s return key is `createdEntities`.
 - `createEntity`'s returned `expiresAt` is a lower bound for `fromBlocks()` — the engine
   resolves the duration against whichever block the transaction lands in, so requested and
   applied can differ. Record both (see `src/arkiv.mjs`, `createMemory`).
@@ -208,8 +208,8 @@ str('a'.repeat(128))         // accepted
 str('0x' + 'a'.repeat(128))  // InvalidValueError: 130 UTF-8 bytes exceeds the 128-byte limit
 ```
 
-Not hit in this build — app-level encryption yields plain 64-hex refs — but any switch to
-`Swarm-Encrypt` must store refs without the `0x` prefix.
+Sidestepped in this build, since app-level encryption yields plain 64-hex refs — but any
+switch to `Swarm-Encrypt` must store refs without the `0x` prefix.
 
 Reproduce: `scripts/feedback/08-ref-length-landmine.mjs`
 
@@ -232,14 +232,15 @@ content; this build has not verified durability over time.
 ## Component 3 — ENS (identity)
 
 **What it holds.** Two names, one per agent — `atlas-ethrome26.eth` and
-`nova-ethrome26.eth` — registered against the **ENSv2 beta deployment on Sepolia**, not v1.
-The original plan was one parent name plus a subname per agent (`atlas.<parent>.eth`); flat
+`nova-ethrome26.eth` — registered against Sepolia's **ENSv2 beta deployment**. The
+original plan was one parent name plus a subname per agent (`atlas.<parent>.eth`); flat
 top-level names instead, because subname creation turned out to need deploying a custom
 subregistry contract, which didn't fit inside the 60-minute cap this leg was given. A
-registered ENSv2 name is still a real agent identity either way — the bounty asks for depth
-of integration, not a specific name shape.
+registered ENSv2 name is still a real agent identity either way — the bounty rewards
+depth of integration over any specific name shape.
 
-**Why a name and not just a wallet address.** A wallet address identifies a signer. A name
+**What a name gives you that a wallet address doesn't.** A wallet address identifies a
+signer. A name
 identifies an agent that other systems can look up, independent of which key currently
 controls it — that's the "agent controlled namespace" ENS's own brief asks for, and it's
 what makes the agent's identity portable rather than tied to one wallet.
@@ -258,8 +259,8 @@ first step is `NAME_WRAPPER.names(node)` — a lookup against the **ENSv1** Name
 contract — and returns `false` immediately if that's empty, before ever checking real
 ownership. Names registered natively through ENSv2's own `ETHRegistrar` never touch the v1
 NameWrapper, so that lookup returns `0x` for both names here (checked directly). The other
-resolver in the Sepolia deployments table, `ENSV2Resolver`, is a read-only CCIP-read mirror,
-not an alternative. Not pursued further — registration alone already satisfies "does real
+resolver in the Sepolia deployments table, `ENSV2Resolver`, is a read-only CCIP-read mirror
+that only forwards lookups. Not pursued further — registration alone already satisfies "does real
 work" / "end-to-end on live testnet data."
 
 ## Evidence
@@ -350,17 +351,16 @@ reference). Round-trip verified byte-for-byte.
 3. Agent B's panel updates with no refresh. This is Arkiv Mission 03's literal demo ask —
    point at it, don't make the judges infer it.
 4. Run a compound query live: `agent_id = X AND memory_type = Y AND importance >= N`. This
-   is what "query depth" means in Arkiv's rubric — not a lookup by id.
+   is what "query depth" means in Arkiv's rubric: a compound filter across attributes.
 5. Show a short-lived memory disappear from that same query with no delete call anywhere in
    the code being shown. This is Mission 02 — use block-based expiration
    (`ExpirationTime.fromBlocks(n)`) and show both the requested duration and the applied
    expiration height from the creation receipt, they can differ.
-6. Show one irrelevant change that does *not* trigger Agent B's panel — proves the event
-   filter is real, not "something happened, refresh anyway."
-7. One line on the ENS name: it's the identity, not a lookup — say what would break if it
-   were just a wallet address instead.
-8. One line on why the content is on Swarm and not Arkiv: Arkiv is the index, not the place
-   data lives.
+6. Show one irrelevant change that does *not* trigger Agent B's panel — proving the event
+   filter genuinely discriminates between relevant and irrelevant changes.
+7. One line on the ENS name as the identity — say what would break if it were just a wallet
+   address instead.
+8. One line on why the content lives on Swarm: Arkiv is the index that points at it.
 
 Recording constraint: ≤3 minutes, face on camera, against the deployed URL.
 
@@ -413,4 +413,4 @@ predecessor docs:
   production Hub page states EUR directly. One team, one payout, even across multiple
   completed missions.
 - Mission 03 evidence should show an irrelevant event *not* triggering a UI update, and
-  actual disconnect/reconnect behavior (not just an initial connect).
+  actual disconnect/reconnect behavior.

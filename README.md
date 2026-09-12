@@ -4,17 +4,17 @@ ETHRome 2026 submission. Built for the Arkiv, Swarm, and ENS bounties.
 
 An AI agent's memory, implemented as three separate concerns instead of one database:
 
-- **Identity** — an ENSv2 name on Sepolia. The agent's name is not a display string, it's
-  the thing other systems resolve to find the agent. (Registered as flat top-level names —
+- **Identity** — an ENSv2 name on Sepolia: the thing other systems resolve to find the
+  agent. (Registered as flat top-level names —
   `atlas-ethrome26.eth`, `nova-ethrome26.eth` — rather than subnames under one parent; see
   `NOTES.md` Component 3 for why.)
 - **Content** — encrypted, content-addressed blobs on Swarm. The actual memory: what the
   agent knows, what it was told, what it decided.
-- **Index** — typed, queryable, expiring records on Arkiv. Not the memory itself, a pointer
-  to it plus enough metadata to search, filter, and decide when it should disappear.
+- **Index** — typed, queryable, expiring records on Arkiv: a pointer to the content plus
+  enough metadata to search, filter, and decide when it should disappear.
 
 Two agent instances demonstrate it: one writes a memory, the other's view of the world
-updates without a refresh, over a live subscription, not a polling loop. A short-lived
+updates without a refresh, over a live websocket subscription. A short-lived
 memory expires from queries on its own, with no delete call, because its lease ran out.
 
 Full architecture, schema, evidence (addresses, tx hashes), and demo script:

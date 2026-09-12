@@ -5,9 +5,9 @@
 // flow) — no fit for a server writing memories programmatically. Using the plain gateway
 // fetch() path instead, which Swarm's own bounty brief explicitly allows.
 //
-// Encryption is app-level (AES-256-GCM), not Swarm's gateway-side Swarm-Encrypt header —
-// the gateway never sees plaintext at all this way. References are therefore always plain
-// 64 hex chars, not the 128-hex form Swarm-Encrypt produces.
+// Encryption is app-level (AES-256-GCM) — the gateway never sees plaintext at all this
+// way. References are therefore always plain 64 hex chars (Swarm's own gateway-side
+// Swarm-Encrypt header produces 128-hex references instead).
 
 import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto'
 

@@ -65,7 +65,7 @@ export async function createMemory(wallet, { agentId, memoryType, tag, importanc
 
 /**
  * Attribute values come back from getEntity/select as typed wrapper objects,
- * { type: 'str', value: 'atlas' } / { type: 'u64', value: 7n }, not plain values —
+ * { type: 'str', value: 'atlas' } / { type: 'u64', value: 7n } —
  * confirmed empirically, asymmetric with the write path (which takes str()/u64()
  * constructors going in but does not hand back the same shape coming out). Unwrap once
  * here rather than making every caller know this.
@@ -82,8 +82,8 @@ async function runQuery(pub, pred, limit) {
 
 /**
  * Compound query: agent_id = X AND memory_type = Y [AND importance >= minImportance]
- * [AND tag STARTSWITH tagPrefix]. This is the query-depth demo — real filters, not an id
- * lookup.
+ * [AND tag STARTSWITH tagPrefix]. This is the query-depth demo: a compound filter across
+ * attributes.
  */
 export async function queryMemories(pub, { agentId, memoryType, minImportance, tagPrefix, limit = 50 }) {
   const clauses = [eq(ATTR.agentId, str(agentId))]
@@ -112,7 +112,7 @@ export async function queryRecent(pub, { agentIds = ['atlas', 'nova'], limit = 2
  * about — every EntityCreated event is filtered by attempting the read, and a read that
  * fails (wrong type, expired between event and read, not one of ours) is silently skipped
  * rather than surfaced as an error. An irrelevant chain event must NOT reach onMemory; that
- * silence is the thing to demo, not a bug to fix.
+ * silence is deliberate — it's the behavior the demo is built to show.
  *
  * wsClient MUST be a webSocket()-transport client, and this call passes no fromBlock — both
  * required for a real subscription rather than HTTP polling (verified in pre-flight,
