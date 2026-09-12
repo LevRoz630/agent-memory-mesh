@@ -95,15 +95,19 @@ export async function tryClaim(ctx, agentId, tag, attempt = 0) {
   }
 }
 
-// The engine rejects an extension two different ways, and they are not the same news:
-//   "...would not extend the expiry..." — the new expiry wouldn't land later than the current one,
-//     because this renewal followed extremely close behind the previous one. The lease is intact.
-//   "entity 0x... expired at block N" — the entity is already gone. The lease is lost.
-// "expired" does not match /expiry/, which is how the second case used to escape as a throw that
-// aborted the renewal loop without the caller ever learning the claim had lapsed.
+// The engine rejects an extension two different ways, and they are not the same news. Both messages
+// below were captured live (scripts/verify-claim-lapse.mjs re-captures them on every run):
+//   "entity 0x… expired at block N" — the entity is already gone. The lease is lost.
+//   "entity 0x… already expires at block N, so extending it to M would shorten its life" — this
+//     renewal followed so close behind the previous one that it would move the expiry backwards.
+//     The lease is intact; skipping this one extension is a no-op.
+// Neither wording matches /expiry/, which is what this used to test: the lapse escaped as a throw
+// that aborted the renewal loop without the caller learning the claim was gone, and the benign case
+// was not actually being swallowed either. "expired" is checked first, since "expires" is a prefix
+// match away from it.
 function classifyExtendError(e) {
   if (/expired/i.test(e.message)) return 'lapsed'
-  if (/expiry/i.test(e.message)) return 'too-soon'
+  if (/expir/i.test(e.message)) return 'too-soon'
   return 'other'
 }
 

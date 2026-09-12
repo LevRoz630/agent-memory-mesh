@@ -1,12 +1,13 @@
 // A claim that has fully lapsed must not be mistaken for a transient "too soon to extend" no-op.
-// This writes a claim with a deliberately tiny TTL, never renews it, waits for it to expire for
-// real, and then checks both halves of the fix: the engine's rejection says "expired" (which the
-// old /expiry/i guard did NOT match, so it was rethrown and killed the renewal loop), and
-// renewClaim() now reports it as { lost: true } instead of throwing.
+// Both of the engine's extension rejections are captured live here, against real entities, so a
+// change in either wording fails loudly instead of silently reverting classifyExtendError to a
+// rethrow: the benign "would move the expiry backwards" case, and a claim written with a tiny TTL,
+// never renewed, left to expire for real. Neither wording matched the original /expiry/i guard.
+// renewClaim() must report the lapse as { lost: true } rather than throwing.
 //
 //   node --env-file=.env scripts/verify-claim-lapse.mjs
 
-import { makeClients, makeAgentSigners, extendMemory } from '../src/arkiv.mjs'
+import { makeClients, makeAgentSigners, extendMemory, deleteMemory } from '../src/arkiv.mjs'
 import { writeMemory } from '../src/memory.mjs'
 import { renewClaim } from '../src/protocol.mjs'
 
@@ -25,6 +26,31 @@ const LAPSE_TTL_BLOCKS = 2
 console.log('a lapsed claim is reported, not thrown\n')
 console.log(`  tag: ${tag}`)
 
+const results = []
+const check = (name, ok) => {
+  results.push(Boolean(ok))
+  console.log(`  ${ok ? 'pass' : 'FAIL'}: ${name}`)
+}
+
+// The benign arm first, on its own claim: a long-lived claim asked to extend to a nearer block is
+// exactly the "this renewal would move the expiry backwards" case renewClaim must treat as a no-op.
+// Captured live so an SDK wording change can't quietly turn it back into a rethrow.
+const benign = await writeMemory(nova.wallet, {
+  agentId: 'nova', memoryType: 'claim', tag: `${tag}-too-soon`, importance: 5, content: {}, ttlBlocks: 60,
+})
+let tooSoonMessage = null
+try {
+  await extendMemory(nova.wallet, { entityKey: benign.entityKey, ttlBlocks: 2 })
+} catch (e) {
+  tooSoonMessage = e.message
+}
+console.log(`  extendMemory() that would move the expiry backwards said: ${tooSoonMessage ?? '(no rejection at all)'}`)
+check('a backwards extension is rejected', tooSoonMessage !== null)
+// classifyExtendError's 'too-soon' arm: matches /expir/i, but must NOT hit the /expired/i arm first.
+check('the rejection is classified as too-soon, not as a lapse', /expir/i.test(tooSoonMessage ?? '') && !/expired/i.test(tooSoonMessage ?? ''))
+await deleteMemory(nova.wallet, { entityKey: benign.entityKey })
+console.log('')
+
 const written = await writeMemory(nova.wallet, {
   agentId: 'nova', memoryType: 'claim', tag, importance: 5, content: {}, ttlBlocks: LAPSE_TTL_BLOCKS,
 })
@@ -40,12 +66,6 @@ try {
   await extendMemory(nova.wallet, { entityKey: written.entityKey, ttlBlocks: 12 })
 } catch (e) {
   directMessage = e.message
-}
-
-const results = []
-const check = (name, ok) => {
-  results.push(Boolean(ok))
-  console.log(`  ${ok ? 'pass' : 'FAIL'}: ${name}`)
 }
 
 console.log('')
