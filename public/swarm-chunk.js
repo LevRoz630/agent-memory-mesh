@@ -3,6 +3,7 @@ const SWARM_SPAN_BYTES = 8
 const SWARM_PREVIEW_BYTES = 192
 
 const swarmChunkUrl = (ref) => `${SWARM_GATEWAY}/chunks/${encodeURIComponent(ref)}`
+const swarmFileUrl = (ref) => `${SWARM_GATEWAY}/bzz/${encodeURIComponent(ref)}/`
 
 // The gateway serves chunks as binary/octet-stream, so following the link downloads a file.
 // It allows cross-origin reads, so the page fetches the bytes itself and shows them instead.

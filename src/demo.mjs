@@ -21,7 +21,7 @@ function freshAgents() {
 
 export function createDemo({ ops, onUpdate = () => {}, timings = {} }) {
   const t = { ...DEFAULT_TIMINGS, ...timings }
-  let state = { tag: null, phase: 'idle', report: null, stepsDone: 0, agents: freshAgents(), timeline: [] }
+  let state = { tag: null, phase: 'idle', report: null, stepsDone: 0, agents: freshAgents(), timeline: [], receiptRef: null }
 
   function getState() {
     return structuredClone(state)
@@ -90,12 +90,23 @@ export function createDemo({ ops, onUpdate = () => {}, timings = {} }) {
         atlas.status = 'watching'
         event(run, 'atlas', `${atlas.dc} back online, atlas is watching again`)
       }
+      if (run === state) {
+        try {
+          const ref = await ops.publishReceipt(structuredClone(run))
+          if (run === state) {
+            run.receiptRef = ref
+            event(run, agentId, 'published a public receipt on Swarm')
+          }
+        } catch (e) {
+          if (run === state) event(run, agentId, `receipt upload failed: ${e.message}`)
+        }
+      }
       return
     }
   }
 
   async function start() {
-    const run = { tag: `incident-${Date.now()}`, phase: 'running', report: null, stepsDone: 0, agents: freshAgents(), timeline: [] }
+    const run = { tag: `incident-${Date.now()}`, phase: 'running', report: null, stepsDone: 0, agents: freshAgents(), timeline: [], receiptRef: null }
     state = run
     setStatus(run, 'atlas', 'watching')
     event(run, 'atlas', `rack R12 in ${DATA_CENTERS.atlas} stopped responding`)

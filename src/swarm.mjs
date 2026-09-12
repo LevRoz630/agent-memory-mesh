@@ -20,6 +20,7 @@
 
 import { createCipheriv, createDecipheriv, randomBytes, createECDH, hkdfSync } from 'node:crypto'
 import { Bee, BatchId, PrivateKey, Stamper } from '@ethersphere/bee-js'
+import { MantarayNode } from '@ethersphere/core-sdk'
 import { AGENT_IDS } from './arkiv.mjs'
 
 const GATEWAY = process.env.SWARM_GATEWAY ?? 'https://api.gateway.ethswarm.org'
@@ -215,6 +216,31 @@ export async function uploadMemory(content, roster = AGENT_IDS) {
   const envelope = stamper.stamp(chunk.address.toUint8Array())
   await bee.chunk.upload(envelope, chunk, undefined, { timeout: FETCH_TIMEOUT_MS })
   return chunk.address.toHex()
+}
+
+// Publishes a file readable by anyone at https://<gateway>/bzz/<ref>/, unlike uploadMemory's
+// encrypted chunks. Builds a one-file Mantaray manifest locally and stamps every chunk (the file's
+// data chunk and every manifest chunk) with our own postage batch, so a plain POST /bzz — which
+// the gateway will silently pay for out of its own postage instead of ours — is never used.
+export async function uploadPublicFile(filename, contentType, bytes) {
+  if (bytes.length > MAX_BLOB_BYTES) {
+    throw new Error(`public file is ${bytes.length} bytes; one stamped chunk holds ${MAX_BLOB_BYTES}`)
+  }
+  const { bee, stamper } = getSwarm()
+
+  const leaf = bee.makeContentAddressedChunk(bytes)
+  await bee.chunk.upload(stamper.stamp(leaf.address.toUint8Array()), leaf, undefined, { timeout: FETCH_TIMEOUT_MS })
+
+  const manifest = new MantarayNode()
+  manifest.addFork(filename, leaf.address.toUint8Array(), { 'Content-Type': contentType, Filename: filename })
+  manifest.addFork('/', new Uint8Array(32), { 'website-index-document': filename })
+
+  const { reference } = await manifest.saveRecursively(async (chunk) => {
+    const raw = chunk.build().subarray(0, 8 + Number(chunk.span))
+    await bee.chunk.upload(stamper.stamp(chunk.hash().toUint8Array()), raw, undefined, { timeout: FETCH_TIMEOUT_MS })
+  })
+
+  return Buffer.from(reference).toString('hex')
 }
 
 export async function downloadSealed(ref) {

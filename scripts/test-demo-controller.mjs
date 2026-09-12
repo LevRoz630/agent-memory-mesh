@@ -48,6 +48,12 @@ function fakeOps({ leaseMs }) {
     async isDone(tag) {
       return done
     },
+    receipts: [],
+    async publishReceipt(state) {
+      log.push(['publishReceipt', state.tag])
+      this.receipts.push(state)
+      return 'cd'.repeat(32)
+    },
   }
 }
 
@@ -98,6 +104,15 @@ check('sol resumed where nova stopped', ops.steps.find((s) => s.agentId === 'sol
 check('timeline records the resume', state.timeline.some((e) => e.agentId === 'sol' && e.text.includes('resuming')))
 check('killing an unknown agent throws', (() => { try { demo.kill('mallory'); return false } catch { return true } })())
 
+await waitFor(() => state.receiptRef !== undefined && demo.getState().receiptRef !== null, 'receipt to be published')
+const stateAfterReceipt = demo.getState()
+const receiptCalls = ops.log.filter((l) => l[0] === 'publishReceipt')
+check('receipt published exactly once', receiptCalls.length === 1)
+check('receipt published with phase resolved', ops.receipts[0]?.phase === 'resolved')
+check('receipt published with a timeline containing "back online"', ops.receipts[0]?.timeline.some((e) => e.text.includes('back online')))
+check('state.receiptRef equals the returned ref', stateAfterReceipt.receiptRef === 'cd'.repeat(32))
+check('timeline logs the published receipt event', stateAfterReceipt.timeline.some((e) => e.text.includes('published a public receipt')))
+
 console.log('\nscenario: restart mid-run\n')
 
 const protocolCalls = []
@@ -143,6 +158,11 @@ const ops2 = {
     protocolCalls.push({ op: 'isDone', tag })
     return this.done
   },
+  async publishReceipt(state) {
+    protocolCalls.push({ op: 'publishReceipt', tag: state.tag })
+    this.log.push(['publishReceipt', state.tag])
+    return 'cd'.repeat(32)
+  },
   claim: null,
   done: false
 }
@@ -170,6 +190,20 @@ const callsWithFirstTagFinal = protocolCalls.filter((c) => c.tag === firstTag).l
 check('restart creates a new run', secondTag !== firstTag)
 check('restart revives every agent', state2.agents.atlas.alive && state2.agents.nova.alive && state2.agents.sol.alive)
 check('superseded run makes no further protocol calls', callsWithFirstTagFinal === callsWithFirstTagAfterRestart)
+
+console.log('\nscenario: publishReceipt fails\n')
+
+const ops3 = fakeOps({ leaseMs: 150 })
+ops3.publishReceipt = async (state) => { throw new Error('gateway unreachable') }
+const demo3 = createDemo({ ops: ops3, timings: { stepMs: 20, retryMs: 10, startDelayMs: { nova: 0, sol: 1000 } } })
+
+await demo3.start()
+await waitFor(() => demo3.getState().phase === 'resolved', 'the incident to resolve (receipt-failure scenario)')
+await sleep(50)
+const state3 = demo3.getState()
+
+check('phase stays resolved when publishReceipt throws', state3.phase === 'resolved')
+check('failure is logged in the timeline', state3.timeline.some((e) => e.text.includes('receipt upload failed')))
 
 const passed = results.every(Boolean)
 console.log(`\nRESULT: ${passed ? 'passed' : 'FAILED'}`)
