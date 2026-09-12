@@ -1,21 +1,21 @@
 // A Claude session deciding for itself whether to remember or recall, through the same
 // endpoints the browser UI uses, so its writes also show up live on the page.
 //
-//   node scripts/agent-chat.mjs <atlas|nova> "<message>"
+//   node scripts/agent-chat.mjs <atlas|nova|sol> "<message>"
 
 import Anthropic from '@anthropic-ai/sdk'
 import { betaTool } from '@anthropic-ai/sdk/helpers/beta/json-schema'
+import { AGENT_IDS } from '../src/arkiv.mjs'
 
 const BASE_URL = process.env.BASE_URL ?? 'http://localhost:3000'
-const AGENT_IDS = ['atlas', 'nova']
 
 const [agentId, message] = process.argv.slice(2)
 if (!agentId || !message) {
-  console.error('usage: node scripts/agent-chat.mjs <atlas|nova> "<message>"')
+  console.error(`usage: node scripts/agent-chat.mjs <${AGENT_IDS.join('|')}> "<message>"`)
   process.exit(1)
 }
 if (!AGENT_IDS.includes(agentId)) {
-  console.error('agentId must be "atlas" or "nova"')
+  console.error(`agentId must be one of: ${AGENT_IDS.join(', ')}`)
   process.exit(1)
 }
 
@@ -66,7 +66,7 @@ const recallTool = betaTool({
   inputSchema: {
     type: 'object',
     properties: {
-      agentId: { type: 'string', enum: ['atlas', 'nova'] },
+      agentId: { type: 'string', enum: AGENT_IDS },
       memoryType: { type: 'string', enum: ['fact', 'task', 'preference', 'event', 'claim'] },
       minImportance: { type: 'integer', minimum: 0, maximum: 10 },
       tagPrefix: { type: 'string' },

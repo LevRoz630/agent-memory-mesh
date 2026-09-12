@@ -4,7 +4,7 @@
 import { createServer } from 'node:http'
 import { WebSocketServer } from 'ws'
 import { createApp, serializeAttrs } from './src/app.mjs'
-import { makeClients, watchMemories } from './src/arkiv.mjs'
+import { makeClients, makeAgentSigners, watchMemories } from './src/arkiv.mjs'
 import { readMemoryContent } from './src/memory.mjs'
 
 const PORT = process.env.PORT || 3000
@@ -15,10 +15,17 @@ if (!privateKey) {
   process.exit(1)
 }
 
-const { account, pub, wallet, wsClient } = makeClients({ privateKey })
-console.log(`Arkiv account: ${account.address}`)
+// Reads need a client, not an identity — the funder key is only here to build one.
+const { pub, wsClient } = makeClients({ privateKey })
 
-const app = createApp({ pub, wallet })
+const signers = makeAgentSigners()
+if (signers.size === 0) {
+  console.error('set ARKIV_PRIVATE_KEY_ATLAS / _NOVA / _SOL — no agent can write without its own signer')
+  process.exit(1)
+}
+for (const [agentId, { account }] of signers) console.log(`signer ${agentId}: ${account.address}`)
+
+const app = createApp({ pub, signers })
 const httpServer = createServer(app)
 const wss = new WebSocketServer({ server: httpServer, path: '/live' })
 

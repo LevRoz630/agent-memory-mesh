@@ -33,6 +33,24 @@ const ATTR = {
 // predicate-free query, and an OR across known agent ids does not survive a third agent.
 const APP = 'agent-memory-mesh'
 
+export const AGENT_IDS = ['atlas', 'nova', 'sol']
+
+// One signer per agent, so `owner` on an entity is the agent that wrote it rather than
+// whichever key the server happened to hold. Each account carries its own nonce sequence.
+// An agent with no key configured is left out rather than silently falling back to another
+// agent's signer — writing as the wrong identity is worse than refusing the write.
+export function makeAgentSigners({ httpUrl } = {}) {
+  const signers = new Map()
+  for (const agentId of AGENT_IDS) {
+    const privateKey = process.env[`ARKIV_PRIVATE_KEY_${agentId.toUpperCase()}`]
+    if (!privateKey) continue
+    const account = privateKeyToAccount(privateKey, { nonceManager })
+    const wallet = createWalletClient({ account, chain: tiramisu, transport: http(httpUrl, { cacheTime: 0 }) })
+    signers.set(agentId, { account, wallet })
+  }
+  return signers
+}
+
 export function makeClients({ privateKey, httpUrl, wsUrl }) {
   // Without nonceManager, concurrent createEntity calls from this wallet race on the same
   // nonce and only one lands (1/6 vs 6/6 live).

@@ -23,7 +23,7 @@ async function withContent(entity) {
   return { key: entity.key, owner: entity.owner, expiresAt: String(entity.expiresAt), attributes: serializeAttrs(entity.attributes), content }
 }
 
-export function createApp({ pub, wallet }) {
+export function createApp({ pub, signers }) {
   const app = express()
   app.use(express.json())
   app.use(express.static(join(__dirname, '..', 'public')))
@@ -49,9 +49,15 @@ export function createApp({ pub, wallet }) {
       if (!Number.isInteger(requestedTtl) || requestedTtl < 1) {
         return res.status(400).json({ error: 'ttlBlocks must be a positive integer' })
       }
+      // The signer is chosen by agentId, so an entity's `owner` is the agent that wrote it.
+      // An unknown agent is refused rather than signed for by someone else.
+      const signer = signers.get(agentId)
+      if (!signer) {
+        return res.status(400).json({ error: `no signer configured for agentId "${agentId}" — known: ${[...signers.keys()].join(', ')}` })
+      }
       const isClaim = memoryType === 'claim'
       const appliedTtl = (maxTtlBlocks && isClaim) ? Math.min(requestedTtl, maxTtlBlocks) : requestedTtl
-      const result = await writeMemory(wallet, {
+      const result = await writeMemory(signer.wallet, {
         agentId, memoryType, tag, importance: importanceNum, content, ttlBlocks: appliedTtl,
       })
       // Report what was asked for AND what was written. Returning only the clamped number as

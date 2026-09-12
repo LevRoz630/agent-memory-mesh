@@ -16,10 +16,10 @@ it. If Nova's process dies mid-fix, the claim must lapse without anything having
 
 That produces two different storage needs, and they pull in opposite directions:
 
-| Need | Shape | Where it goes |
-| --- | --- | --- |
-| "Is there an open task tagged for remediation, importance ≥ 7?" | small, typed, queryable by many parties, must expire on its own | Arkiv |
-| The incident itself — log excerpts, affected endpoints, the reasoning | arbitrary size, not queryable, must stay private | Swarm |
+| Need                                                                   | Shape                                                           | Where it goes |
+| ---------------------------------------------------------------------- | --------------------------------------------------------------- | ------------- |
+| "Is there an open task tagged for remediation, importance ≥ 7?"       | small, typed, queryable by many parties, must expire on its own | Arkiv         |
+| The incident itself — log excerpts, affected endpoints, the reasoning | arbitrary size, not queryable, must stay private                | Swarm         |
 
 Arkiv attributes are capped: `str` values are 128 bytes, UTF-8 correct (`feedback.md:59-60`).
 An incident report does not fit. So Arkiv holds a 64-hex pointer and the searchable metadata;
@@ -57,14 +57,14 @@ definition, not from us: `node_modules/@arkiv-network/sdk/src/chains/tiramisu.ts
 
 **Schema.** Six attributes, snake_case, defined once in `src/arkiv.mjs:23-34`:
 
-| Attribute | Type | Purpose |
-| --- | --- | --- |
-| `app` | `str` | constant `agent-memory-mesh` — written by every participant, see below |
-| `agent_id` | `str` | who wrote it — `atlas` or `nova` |
-| `memory_type` | `str` | `fact` / `task` / `preference` / `event` / `claim` |
-| `tag` | `str` | topic |
-| `importance` | `u64` | 0–10, supports `gte` filtering |
-| `swarm_ref` | `str` | the 64-hex Swarm reference |
+| Attribute       | Type    | Purpose                                                                  |
+| --------------- | ------- | ------------------------------------------------------------------------ |
+| `app`         | `str` | constant`agent-memory-mesh` — written by every participant, see below |
+| `agent_id`    | `str` | who wrote it - atlas, nova or sol                                        |
+| `memory_type` | `str` | `fact` / `task` / `preference` / `event` / `claim`             |
+| `tag`         | `str` | topic                                                                    |
+| `importance`  | `u64` | 0–10, supports`gte` filtering                                         |
+| `swarm_ref`   | `str` | the 64-hex Swarm reference                                               |
 
 `claim` is a first-class type, not a tag convention: it is what an agent writes to take a
 task another agent filed, and it is the only type the demo TTL clamp applies to
@@ -125,8 +125,7 @@ on error (`server.mjs:41-65`).
 
 **What the code does.** `src/swarm.mjs` encrypts with AES-256-GCM, packs
 `[12-byte IV][16-byte auth tag][ciphertext]` into one blob, and POSTs it to
-`${SWARM_GATEWAY}/bytes`, default `https://api.gateway.ethswarm.org` (`src/swarm.mjs:10,
-25-60`). Download reverses it (`src/swarm.mjs:62-70`). An 8-second timeout exists because a
+`${SWARM_GATEWAY}/bytes`, default `https://api.gateway.ethswarm.org` (`src/swarm.mjs:10, 25-60`). Download reverses it (`src/swarm.mjs:62-70`). An 8-second timeout exists because a
 gateway that accepts the connection and then stalls leaves a bare `fetch()` pending forever,
 hanging whichever route awaits it (`src/swarm.mjs:11-13`).
 
@@ -184,8 +183,7 @@ ours. That is the single largest gap between what exists and what the design imp
 **Write.** `POST /api/memory` → validate all six fields, rejecting non-integer importance and
 TTL before they reach the SDK → clamp the TTL if this is a `claim` (§6) → `writeMemory` →
 encrypt, upload, get reference → `createEntity` with the reference and five metadata
-attributes → return `{ entityKey, txHash, swarmRef, appliedTtlBlocks, appliedExpiresAt,
-requestedTtlBlocks, ttlClamped }` (`src/app.mjs:36-69`).
+attributes → return `{ entityKey, txHash, swarmRef, appliedTtlBlocks, appliedExpiresAt, requestedTtlBlocks, ttlClamped }` (`src/app.mjs:36-69`).
 
 **Read.** `GET /api/query?agentId=…` → Arkiv predicate → for each row, fetch and decrypt its
 Swarm content. A failed fetch degrades to `{ error: 'content unavailable: …' }` on that row
@@ -220,8 +218,10 @@ Two things exist for the recorded demo rather than for the design:
 
 ## 7. The three-agent workflow
 
-This is the shape the project is being built toward. The wallets exist and are funded; the
-protocol below is designed and not yet implemented.
+This is the shape the project is being built toward. **Identity is built**: three funded
+wallets, and the server signs each write with the agent that asked for it. **The claim
+protocol is not** — the lifecycle below is designed, and nothing yet renews, completes or
+takes over a lease.
 
 ### Why three and not two
 
@@ -230,11 +230,11 @@ an expiring lease worth anything. With a third agent, "Nova crashed" stops being
 by narration and becomes something visible: Sol picks the work up, and the only thing that
 let it do so was the lease lapsing on its own.
 
-| Agent | Role | Writes | Reads |
-| --- | --- | --- | --- |
-| `atlas` | monitoring — detects incidents, never fixes them | `event` incidents | nothing it needs to act on |
-| `nova` | remediation worker | `claim`, then `done` | open incidents, live claims |
-| `sol` | second remediation worker — identical to Nova | `claim`, then `done` | open incidents, live claims |
+| Agent     | Role                                              | Writes                   | Reads                       |
+| --------- | ------------------------------------------------- | ------------------------ | --------------------------- |
+| `atlas` | monitoring — detects incidents, never fixes them | `event` incidents      | nothing it needs to act on  |
+| `nova`  | remediation worker                                | `claim`, then `done` | open incidents, live claims |
+| `sol`   | second remediation worker — identical to Nova    | `claim`, then `done` | open incidents, live claims |
 
 Nova and Sol are the same program with different identities. That is the point: neither is
 special, and either can take work the other abandons.
@@ -244,20 +244,29 @@ special, and either can take work the other abandons.
 Four wallets. Three agents sign for themselves; the original key becomes the funder and signs
 nothing in the protocol.
 
-| Role | Env var | Address | Funded |
-| --- | --- | --- | --- |
-| funder | `ARKIV_PRIVATE_KEY` | `0x9F5997ecB905211a464F29090900468BDBa286C1` | 0.0486 GLM |
-| atlas | `ARKIV_PRIVATE_KEY_ATLAS` | `0xa3D849F993765d7B434E53f76Ab4Bd6e6C214215` | 0.05 GLM |
-| nova | `ARKIV_PRIVATE_KEY_NOVA` | `0x992c6b62B5E2C227204FB28FFB1e88693206Cfb0` | 0.05 GLM |
-| sol | `ARKIV_PRIVATE_KEY_SOL` | `0x7D75c4b534feC6c205245aF5A87A2A6Be9049d49` | 0.05 GLM |
+| Role   | Env var                     | Address                                        | Funded     |
+| ------ | --------------------------- | ---------------------------------------------- | ---------- |
+| funder | `ARKIV_PRIVATE_KEY`       | `0x9F5997ecB905211a464F29090900468BDBa286C1` | 0.0486 GLM |
+| atlas  | `ARKIV_PRIVATE_KEY_ATLAS` | `0xa3D849F993765d7B434E53f76Ab4Bd6e6C214215` | 0.05 GLM   |
+| nova   | `ARKIV_PRIVATE_KEY_NOVA`  | `0x992c6b62B5E2C227204FB28FFB1e88693206Cfb0` | 0.05 GLM   |
+| sol    | `ARKIV_PRIVATE_KEY_SOL`   | `0x7D75c4b534feC6c205245aF5A87A2A6Be9049d49` | 0.05 GLM   |
 
 At the measured 0.000105 GLM per `createEntity`, 0.05 GLM is roughly 475 writes per agent.
 Keys live in `.env`, which is gitignored.
 
 Separate signers are what make the central claim true rather than rhetorical. Until now both
 agents shared one key, so every row had the same `owner` and `agent_id` was a string an agent
-asserted about itself. Verified live after funding — three agents writing concurrently, one
-entity each:
+asserted about itself. `makeAgentSigners` now builds one wallet client per agent from
+`ARKIV_PRIVATE_KEY_<AGENT>`, and the write route picks the signer by `agentId`
+(`src/arkiv.mjs`, `src/app.mjs`). An agent with no configured key is refused rather than
+signed for by whichever key is at hand:
+
+```
+$ curl -X POST /api/memory -d '{"agentId":"mallory", …}'
+{"error":"no signer configured for agentId \"mallory\" — known: atlas, nova, sol"}
+```
+
+Verified live — three agents writing through the API, one entity each:
 
 ```
 agent_id=atlas  owner=0xa3D849F993765d7B434E53f76Ab4Bd6e6C214215
@@ -280,11 +289,11 @@ follow immediately:
 All three are ordinary `agent_memory` entities. The role is carried by `memory_type`; the tag
 says which piece of work it concerns.
 
-| Role | `memory_type` | `tag` | TTL | Written by |
-| --- | --- | --- | --- | --- |
-| incident | `event` | `incident-<id>` | 600 blocks | the reporting agent |
-| claim | `claim` | `incident-<id>` | 8 blocks, renewed while working | the working agent |
-| done | `done` | `incident-<id>` | 600 blocks | the finishing agent |
+| Role     | `memory_type` | `tag`           | TTL                             | Written by          |
+| -------- | --------------- | ----------------- | ------------------------------- | ------------------- |
+| incident | `event`       | `incident-<id>` | 600 blocks                      | the reporting agent |
+| claim    | `claim`       | `incident-<id>` | 8 blocks, renewed while working | the working agent   |
+| done     | `done`        | `incident-<id>` | 600 blocks                      | the finishing agent |
 
 All three share one tag per piece of work and differ only by type, so every query in the
 protocol is an equality match on two attributes. Nothing parses a built string.
@@ -402,11 +411,17 @@ expiring lease over it. This is cleaner, and it is also a larger change than it 
 feed updates need chunk signing, and the docs are explicit that doing it by hand "can involve
 a little data juggling and crypto magic."
 
-**Per-agent signers — wallets funded, code not yet wired.** The three wallets in §7 exist and
-have written to the chain, but `server.mjs:13-19` still builds one client from
-`ARKIV_PRIVATE_KEY` and the write route takes `agentId` as a request field. Wiring this up
-means `makeClients` per agent and the server selecting the signer by `agentId` — at which
-point an agent can no longer write as another simply by asking.
+**The server still holds every agent's key.** Per-agent signers fixed `owner`, but not who
+is allowed to ask. `agentId` is a plain field in the request body, so anything that can reach
+`POST /api/memory` can write as Nova by typing "nova" — the server checks that a signer
+exists, never that the caller is entitled to it. The honest description today is a trusted
+server with three identities, not three independent agents.
+
+Closing it means the key moves to the agent: each agent process builds its own wallet client
+and calls `createEntity` directly, leaving the server as a read and broadcast surface only.
+That is the version where "the only thing connecting them is the public index" is literally
+true, and it costs the demo its single point of observation — worth weighing before the
+recording.
 
 **Scoping reads by owner.** `app` is self-asserted exactly like `agent_id` was: anything can
 write the constant and appear in the index. Now that the agent addresses are known and fixed,
@@ -436,12 +451,12 @@ boundary.
 
 ## Appendix: how to verify any claim above
 
-| Claim | Check |
-| --- | --- |
-| Expiry is exact, applied value can differ | `node --env-file=.env scripts/demo-expiry.mjs` |
-| A claim lapses with nothing watching | `node --env-file=.env scripts/watch-claim.mjs nova` |
-| All four Arkiv findings | `npm run feedback:repro` (exit 0 = reproduced) |
-| Gateway accepts unstamped uploads | the two `curl` commands in §4 |
-| Each agent signs as itself | the three addresses in §7, on any block explorer for Tiramisu |
-| SDK behaviours | the cited paths under `node_modules/@arkiv-network/sdk/src/` |
-| Bee endpoint contracts | `openapi/Swarm.yaml` in `ethersphere/bee`, line numbers as cited |
+| Claim                                     | Check                                                                |
+| ----------------------------------------- | -------------------------------------------------------------------- |
+| Expiry is exact, applied value can differ | `node --env-file=.env scripts/demo-expiry.mjs`                     |
+| A claim lapses with nothing watching      | `node --env-file=.env scripts/watch-claim.mjs nova`                |
+| All four Arkiv findings                   | `npm run feedback:repro` (exit 0 = reproduced)                     |
+| Gateway accepts unstamped uploads         | the two`curl` commands in §4                                      |
+| Each agent signs as itself                | the three addresses in §7, on any block explorer for Tiramisu       |
+| SDK behaviours                            | the cited paths under`node_modules/@arkiv-network/sdk/src/`        |
+| Bee endpoint contracts                    | `openapi/Swarm.yaml` in `ethersphere/bee`, line numbers as cited |
