@@ -145,6 +145,58 @@ export async function startHeartbeat(ctx, agentId, shouldContinue = () => true) 
   }
 }
 
+const PEER_WATCH_POLL_MS = 4000
+const EMPTY_POLLS_BEFORE_OUTAGE = 2
+
+export function watchForPeerOutages(ctx, watchingAgentId, onOutageDetected) {
+  const { pub, signers } = ctx
+  let stopped = false
+  // A single empty query is not evidence a peer is down: a row that was just renewed stays
+  // invisible to queries for a block or two (the same lag startHeartbeat anchors around). Only a
+  // second consecutive empty poll for the same peer separates chain-index lag from a real lapse.
+  const emptyPolls = new Map()
+  // Our own just-filed incident is invisible to the existence check below for a block or two, so
+  // the on-chain check alone would let the next poll file a second one.
+  const filed = new Set()
+  const loop = async () => {
+    while (!stopped) {
+      for (const peerId of AGENT_IDS) {
+        if (stopped) return
+        if (peerId === watchingAgentId) continue
+        const peerTag = `agent-${peerId}`
+        const heartbeats = await queryByTagAndType(pub, { tag: peerTag, memoryType: 'heartbeat', limit: 1 })
+        if (heartbeats.length > 0) {
+          emptyPolls.set(peerId, 0)
+          filed.delete(peerId)
+          continue // peer is alive
+        }
+        const misses = (emptyPolls.get(peerId) ?? 0) + 1
+        emptyPolls.set(peerId, misses)
+        if (misses < EMPTY_POLLS_BEFORE_OUTAGE) continue
+        if (filed.has(peerId)) continue
+
+        const outageTag = `outage-${peerId}`
+        const existing = await queryByTagAndType(pub, { tag: outageTag, memoryType: 'event', limit: 1 })
+        if (existing.length > 0) {
+          filed.add(peerId)
+          continue // already filed, by us or another watcher
+        }
+
+        const signer = signers.get(watchingAgentId)
+        await writeMemory(signer.wallet, {
+          agentId: watchingAgentId, memoryType: 'event', tag: outageTag, importance: 8,
+          content: { note: `${peerId} heartbeat lapsed` }, ttlBlocks: LONG_LIVED_BLOCKS,
+        })
+        filed.add(peerId)
+        onOutageDetected?.(peerId, outageTag)
+      }
+      await sleep(PEER_WATCH_POLL_MS)
+    }
+  }
+  loop().catch((e) => console.error(`watchForPeerOutages(${watchingAgentId}) failed:`, e.message))
+  return () => { stopped = true }
+}
+
 export async function takeOver(ctx, tag) {
   const { pub } = ctx
   const lanes = await queryByTagAndType(pub, { tag, memoryType: 'lane' })
