@@ -1,9 +1,4 @@
-// Public, human-readable "incident receipt": a self-contained SVG published to Swarm as a /bzz
-// manifest (src/swarm.mjs's uploadPublicFile) so judges can open it in a browser without
-// downloading anything. SVG, not HTML: the gateway's /bzz route 302s HTML to an approval page,
-// but serves application/json, text/markdown and image/svg+xml inline. Contains nothing
-// sensitive: the referenced Swarm report stays encrypted to the incident roster, and this page
-// only ever shows its reference, not its contents.
+// SVG because the public gateway redirects HTML on /bzz to an approval page but serves SVG inline.
 
 const EXPLORER = 'https://tiramisu.explorer.arkiv.network'
 
@@ -31,7 +26,7 @@ export function renderReceipt(state) {
   const lines = []
 
   lines.push({ cls: 'title', text: 'Hydra incident receipt' })
-  lines.push({ cls: 'head', text: `Incident ${state.tag}` })
+  lines.push({ cls: 'head', text: state.tag })
   lines.push({ cls: 'head', text: resolver ? `Resolved by ${resolver}` : `Phase: ${state.phase}` })
   lines.push({ cls: 'body', text: '' })
 
@@ -58,7 +53,7 @@ export function renderReceipt(state) {
   }).join('')
 
   return `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 ${WIDTH} ${height}" width="${WIDTH}" height="${height}">
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 ${WIDTH} ${height}" width="100%">
 <style>text{font-family:ui-monospace,Consolas,monospace;fill:#222}.title{font-size:20px;font-weight:700}.head{font-size:13px}.body{font-size:12px}a text{fill:#0645ad}</style>
 <rect x="0" y="0" width="${WIDTH}" height="${height}" fill="#ffffff" stroke="#cccccc"/>
 ${body}

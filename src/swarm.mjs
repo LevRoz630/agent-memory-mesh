@@ -218,10 +218,8 @@ export async function uploadMemory(content, roster = AGENT_IDS) {
   return chunk.address.toHex()
 }
 
-// Publishes a file readable by anyone at https://<gateway>/bzz/<ref>/, unlike uploadMemory's
-// encrypted chunks. Builds a one-file Mantaray manifest locally and stamps every chunk (the file's
-// data chunk and every manifest chunk) with our own postage batch, so a plain POST /bzz — which
-// the gateway will silently pay for out of its own postage instead of ours — is never used.
+// Builds the manifest locally and stamps every chunk with our batch. The gateway accepts a plain
+// POST /bzz with no stamp and pays for it with its own postage, so that route is avoided.
 export async function uploadPublicFile(filename, contentType, bytes) {
   if (bytes.length > MAX_BLOB_BYTES) {
     throw new Error(`public file is ${bytes.length} bytes; one stamped chunk holds ${MAX_BLOB_BYTES}`)
