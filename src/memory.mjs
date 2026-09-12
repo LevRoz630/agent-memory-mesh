@@ -1,10 +1,10 @@
 import { uploadMemory, downloadMemory } from './swarm.mjs'
 import { createMemory } from './arkiv.mjs'
 
-export async function writeMemory(wallet, { agentId, memoryType, tag, importance, content, ttlBlocks }) {
-  const swarmRef = await uploadMemory(content)
+export async function writeMemory(wallet, { agentId, memoryType, tag, importance, content, ttlBlocks, roster, outcome }) {
+  const swarmRef = await uploadMemory(content, roster)
   const { entityKey, txHash, appliedTtlBlocks, appliedExpiresAt } = await createMemory(wallet, {
-    agentId, memoryType, tag, importance, swarmRef, ttlBlocks,
+    agentId, memoryType, tag, importance, swarmRef, ttlBlocks, outcome,
   })
   return { entityKey, txHash, swarmRef, appliedTtlBlocks, appliedExpiresAt }
 }
