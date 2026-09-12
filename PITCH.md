@@ -1,7 +1,7 @@
 # Pitch prep — Agent Memory Mesh
 
 Working notes for the live ≤3-minute demo/pitch. Submission-facing file: `README.md`.
-Technical reference: `NOTES.md`. Ordered by judging weight.
+Technical reference, architecture, and evidence: `README.md`. Ordered by judging weight.
 
 ## 1. Why Arkiv / Web3 database — 30%
 
@@ -26,6 +26,12 @@ Target: ~25s
 
 Not automated, point at it manually: one irrelevant chain event that doesn't touch the
 live panel — the code that proves the filter is real.
+
+Two one-liners the ENS and Swarm bounties want said out loud at judging:
+- ENS: the identity is a portable name — an agent other systems can look up independent
+  of who currently controls the underlying key.
+- Swarm: content lives on Swarm; Arkiv stays the index — metadata and expiry only, no
+  bulk storage.
 
 - [ ] rehearse `npm run demo` once beforehand — model wording varies run to run
 - [ ] two windows side by side, or switch between terminal/browser on one screen?
@@ -78,5 +84,5 @@ Target: ~15–20s
 - **Physical setup:** two windows/screens vs. switching on one, for the terminal + browser
   beats.
 - **Who presents which section.**
-- **`hub.arkiv.network/ethrome` has changed mid-event before** (noted in `NOTES.md`) —
-  worth one more check before judging.
+- **`hub.arkiv.network/ethrome` has changed mid-event before** — worth one more check
+  before judging.

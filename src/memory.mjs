@@ -1,5 +1,5 @@
 // The whole write/read flow, combining src/swarm.mjs (content) and src/arkiv.mjs (index).
-// This is the module NOTES.md's architecture section describes.
+// This is the module README.md's Architecture section describes.
 
 import { uploadMemory, downloadMemory } from './swarm.mjs'
 import { createMemory } from './arkiv.mjs'
