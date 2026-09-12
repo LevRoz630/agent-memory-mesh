@@ -11,8 +11,9 @@ Read this before the design questions at the end. Those are the parts that are n
 
 ## 1. The problem the split solves
 
-Two agents that never call each other. Atlas detects an incident, Nova claims it and works
-it. If Nova's process dies mid-fix, the claim must lapse without anything having to notice.
+Agents that never call each other. Atlas detects an incident; Nova or Sol claims it and works
+it. If the working agent's process dies mid-fix, the claim must lapse without anything having
+to notice. §7 covers the full three-agent workflow.
 
 That produces two different storage needs, and they pull in opposite directions:
 
@@ -55,7 +56,7 @@ Order matters — a Swarm upload that fails must not leave an Arkiv row pointing
 definition, not from us: `node_modules/@arkiv-network/sdk/src/chains/tiramisu.ts:17-18`
 (`https://rpc.tiramisu.db-chain.testnet.arkiv.network`, and the same host over `wss://`).
 
-**Schema.** Six attributes, snake_case, defined once in `src/arkiv.mjs:23-34`:
+**Schema.** Six attributes, snake_case, defined once in `src/arkiv.mjs:23-30`:
 
 | Attribute       | Type    | Purpose                                                                  |
 | --------------- | ------- | ------------------------------------------------------------------------ |
@@ -68,24 +69,24 @@ definition, not from us: `node_modules/@arkiv-network/sdk/src/chains/tiramisu.ts
 
 `claim` is a first-class type, not a tag convention: it is what an agent writes to take a
 task another agent filed, and it is the only type the demo TTL clamp applies to
-(`src/app.mjs:52`). A lease that an agent has to spell correctly in a tag is not a lease.
+(`src/app.mjs:58-59`). A lease that an agent has to spell correctly in a tag is not a lease.
 
 `app` exists so the index can be selected as a whole. It replaced an `or` across hard-coded
 agent ids, which did not survive a third agent, and it is also what the live watcher tests to
-decide whether a chain event is ours (`src/arkiv.mjs:106-110, 120-128`).
+decide whether a chain event is ours (`src/arkiv.mjs:126-128, 149`).
 
 snake_case is not style. The SDK's client-side `isValidAttributeName` accepts `agentId` and
 `AGENT`; the engine rejects both on-chain (`feedback.md:43-56`). The payload itself is empty
 — `stringToPayload('')` — because the entity is an index row, not a container
-(`src/arkiv.mjs:48`).
+(`src/arkiv.mjs:71`).
 
 **Expiry is the feature.** `ExpirationTime.fromBlocks(n)` takes a positive integer, exact, no
 rounding — verified in the shipped source at
 `node_modules/@arkiv-network/sdk/src/utils/expirationTime.ts:106-114`, and in the SDK's own
-test at `src/entity/expiry.test.ts:55-57`. But the value `createEntity` returns is resolved
+test at `node_modules/@arkiv-network/sdk/src/entity/expiry.test.ts:55-57`. But the value `createEntity` returns is resolved
 against whichever block the transaction actually lands in, so requested and applied differ.
 Both are recorded and returned rather than one being assumed
-(`src/arkiv.mjs:44-58`, `src/memory.mjs:9`).
+(`src/arkiv.mjs:66-83`, `src/memory.mjs:9`).
 
 Nothing in this repo calls `deleteEntity`. That is the claim being demonstrated: rows leave
 by block height, not by anyone acting. `scripts/demo-expiry.mjs` writes an 8-block row and
@@ -93,31 +94,31 @@ polls the same query until it returns zero rows; `scripts/watch-claim.mjs` does 
 a claim written by someone else.
 
 **Queries.** `queryMemories` composes `eq` / `gte` / `startsWith` under `and`
-(`src/arkiv.mjs:75-82`). Two constraints shaped this:
+(`src/arkiv.mjs:115-122`). Two constraints shaped this:
 
 - Arkiv rejects a predicate-free query, so "show me everything recent" is a single
-  `eq(app, 'agent-memory-mesh')` (`src/arkiv.mjs:106-110`) rather than an unfiltered scan.
+  `eq(app, 'agent-memory-mesh')` (`src/arkiv.mjs:126-128`) rather than an unfiltered scan.
 - `select('*')` silently omits `owner` on the live node, so fields are listed explicitly
-  (`src/arkiv.mjs:91-92`).
+  (`src/arkiv.mjs:107-113`).
 
 **Reads come back shaped differently from writes.** Writes take `str('atlas')`; reads return
 `{ type: 'str', value: 'atlas' }`. Unwrapped in one place so nothing downstream has to know
-(`src/arkiv.mjs:63-65`); filed as finding 1 in `feedback.md`.
+(`src/arkiv.mjs:101-105`); filed as finding 1 in `feedback.md`.
 
 **Concurrency.** Six concurrent `createEntity` calls from one signer: 1 of 6 land without
 viem's `nonceManager`, 6 of 6 with it, and the error text never says "nonce"
-(`feedback.md:68-84`). Applied at `src/arkiv.mjs:34`. This is the finding most likely to
+(`feedback.md:68-84`). Applied at `src/arkiv.mjs:47, 57`. This is the finding most likely to
 bite another team, and it is reproducible: `scripts/feedback/03-nonce-manager.mjs`.
 
 **Live view.** `watchEntityEvents` delivers `{ entityKey, owner, expiresAt }` and nothing
 else — confirmed in the SDK's own JSDoc example at
 `node_modules/@arkiv-network/sdk/src/actions/public/watchEntityEvents.ts:78-79`. So every
-event must be read back to find out whether it is ours; anything without `agent_id` is
-dropped silently so unrelated chain traffic never reaches the UI (`src/arkiv.mjs:99-118`).
+event must be read back to find out whether it is ours; anything whose `app` doesn't match is
+dropped silently so unrelated chain traffic never reaches the UI (`src/arkiv.mjs:142-161`).
 Two things are easy to get wrong here and are handled: the watch needs its own
-`webSocket()`-transport client or it degrades to polling (`src/arkiv.mjs:37-39`), and viem
+`webSocket()`-transport client or it degrades to polling (`src/arkiv.mjs:60-62`), and viem
 reconnects the socket without restoring the subscription behind it, so the watch is re-armed
-on error (`server.mjs:41-65`).
+on error (`server.mjs:46-71`).
 
 ---
 
@@ -125,7 +126,7 @@ on error (`server.mjs:41-65`).
 
 **What the code does.** `src/swarm.mjs` encrypts with AES-256-GCM, packs
 `[12-byte IV][16-byte auth tag][ciphertext]` into one blob, and POSTs it to
-`${SWARM_GATEWAY}/bytes`, default `https://api.gateway.ethswarm.org` (`src/swarm.mjs:10, 25-60`). Download reverses it (`src/swarm.mjs:62-70`). An 8-second timeout exists because a
+`${SWARM_GATEWAY}/bytes`, default `https://api.gateway.ethswarm.org` (`src/swarm.mjs:10, 25-33, 45-60`). Download reverses it (`src/swarm.mjs:62-70`). An 8-second timeout exists because a
 gateway that accepts the connection and then stalls leaves a bare `fetch()` pending forever,
 hanging whichever route awaits it (`src/swarm.mjs:11-13`).
 
@@ -181,23 +182,24 @@ ours. That is the single largest gap between what exists and what the design imp
 ## 5. The three paths through the system
 
 **Write.** `POST /api/memory` → validate all six fields, rejecting non-integer importance and
-TTL before they reach the SDK → clamp the TTL if this is a `claim` (§6) → `writeMemory` →
+TTL before they reach the SDK → select the signer for `agentId`, refusing an unknown one (§7)
+→ clamp the TTL if this is a `claim` (§6) → `writeMemory` →
 encrypt, upload, get reference → `createEntity` with the reference and five metadata
-attributes → return `{ entityKey, txHash, swarmRef, appliedTtlBlocks, appliedExpiresAt, requestedTtlBlocks, ttlClamped }` (`src/app.mjs:36-69`).
+attributes → return `{ entityKey, txHash, swarmRef, appliedTtlBlocks, appliedExpiresAt, requestedTtlBlocks, ttlClamped }` (`src/app.mjs:36-74`).
 
 **Read.** `GET /api/query?agentId=…` → Arkiv predicate → for each row, fetch and decrypt its
 Swarm content. A failed fetch degrades to `{ error: 'content unavailable: …' }` on that row
 rather than failing the request, so an expired or unreachable blob does not take the page
-down (`src/app.mjs:16-24, 51-66`).
+down (`src/app.mjs:16-24, 77-92`).
 
 **Live.** `watchEntityEvents` → read back → broadcast over `/live` to every connected
-browser (`server.mjs:41-65`). This path does not exist on Vercel; a serverless function
+browser (`server.mjs:39-65`). This path does not exist on Vercel; a serverless function
 cannot hold a socket open, so the deployment falls back to `/api/recent` polling
-(`src/app.mjs:1-2, 68-76`).
+(`src/app.mjs:1-2, 94-105`).
 
 Error handling worth naming: Express's default handler serves stack traces including
 filesystem paths, so malformed JSON and oversized bodies are caught before that
-(`src/app.mjs:88-93`).
+(`src/app.mjs:117-122`).
 
 ---
 
@@ -206,11 +208,11 @@ filesystem paths, so malformed JSON and oversized bodies are caught before that
 Two things exist for the recorded demo rather than for the design:
 
 - `src/app.mjs`: a `DEMO_MAX_TTL_BLOCKS` clamp applied to `memory_type: 'claim'`
-  (`src/app.mjs:33-34, 52-53`). Rationale: the agent picks its own TTL, and a claim it
+  (`src/app.mjs:33-34, 58-59`). Rationale: the agent picks its own TTL, and a claim it
   decides should live 1800 blocks cannot be shown lapsing inside a three-minute video. The
   response reports `requestedTtlBlocks`, `appliedTtlBlocks` and `ttlClamped` separately, so
   neither the agent nor the UI can mistake a clamped write for an honoured one
-  (`src/app.mjs:59-64`).
+  (`src/app.mjs:65-70`).
 - `scripts/watch-claim.mjs`: watches an existing claim lapse rather than writing one first,
   so the expiry demo can run against a claim Nova actually made.
 
@@ -266,19 +268,12 @@ $ curl -X POST /api/memory -d '{"agentId":"mallory", …}'
 {"error":"no signer configured for agentId \"mallory\" — known: atlas, nova, sol"}
 ```
 
-Verified live — three agents writing through the API, one entity each:
-
-```
-agent_id=atlas  owner=0xa3D849F993765d7B434E53f76Ab4Bd6e6C214215
-agent_id=nova   owner=0x992c6b62B5E2C227204FB28FFB1e88693206Cfb0
-agent_id=sol    owner=0x7D75c4b534feC6c205245aF5A87A2A6Be9049d49
-```
-
-`agent_id` and `owner` now agree, and `owner` is the one the engine enforces. Two consequences
-follow immediately:
+Verified live: each of the three agents wrote one entity through the API, and each row's
+`owner` came back as that agent's own address from the table above. `agent_id` and `owner`
+now agree, and `owner` is the one the engine enforces. Two consequences follow immediately:
 
 - **Nobody can release or renew anyone else's claim.** `extendEntity` and `deleteEntity` are
-  owner-gated (`src/arkiv.mjs:67-81`); a non-owner is rejected with
+  owner-gated (`src/arkiv.mjs:85-99`); a non-owner is rejected with
   `entity 0x… is owned by 0x…, not 0x…`. So an abandoned claim cannot be cleaned up by a
   peer — expiry is not the convenient mechanism, it is the *only* one.
 - **Each agent gets its own nonce sequence**, which is what made the concurrent funding and
@@ -323,24 +318,19 @@ atlas                    nova                       sol
   │                                                   └─ delete its own claim
 ```
 
-Reading it in order:
+Four things in that diagram are decisions rather than mechanics:
 
-1. **Atlas files the incident.** An `event` with a 600-block TTL: long enough to outlive
-   several claim attempts, short enough that the index does not accumulate forever.
-2. **A worker checks before claiming.** `done` first, then `claim`. Order matters — checking
-   the claim first and the completion second leaves a window where finished work gets redone.
-3. **The worker claims with a short lease.** 8 blocks, about 16 seconds. Deliberately far
-   shorter than the work takes.
-4. **It renews while working**, roughly every 3 blocks. A third of the lease, so two
-   consecutive failed renewals are survivable. Renewing at the full lease length makes every
-   renewal a photo finish and one slow RPC drops a lease that is being actively worked.
-5. **If it dies, nothing happens — and that is the mechanism.** No transaction, no event, no
-   cleanup job. The engine simply stops answering for that key at the expiry block.
-6. **The second worker takes over.** Its next poll finds no live claim and it claims for
-   itself.
-7. **On finishing: write `done` first, then delete the claim.** That order is load-bearing.
-   A crash between the two leaves the claim to lapse on its own, while the `done` record
-   already prevents the work being repeated.
+- **Check `done` before `claim`.** The other order leaves a window where finished work gets
+  picked up and redone.
+- **The lease is far shorter than the work.** 8 blocks, about 16 seconds, renewed roughly
+  every 3. A third of the lease means two consecutive failed renewals are survivable;
+  renewing at full length makes every renewal a photo finish, and one slow RPC drops a lease
+  that is being actively worked.
+- **Nothing happens when the worker dies, and that is the mechanism.** No transaction, no
+  event, no cleanup job — the engine simply stops answering for that key at the expiry block.
+- **On finishing, write `done` before deleting the claim.** A crash between the two leaves
+  the claim to lapse on its own while the `done` record already prevents repeated work. The
+  reverse order can lose both.
 
 ### The lapse is derived, never announced
 
