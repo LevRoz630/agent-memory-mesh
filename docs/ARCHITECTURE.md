@@ -97,24 +97,27 @@ points at it.
 
 ## 4. The three-agent protocol
 
-| Agent   | Role | Writes | 
-| ------- | ---- | ------ |
-| `atlas` | monitors, never fixes | `event`, later `verdict` |
-| `nova`  | remediation worker | `claim`, `lane`, `done` |
-| `sol`   | remediation worker, identical to nova | `claim`, `lane`, `done` |
+`atlas`, `nova`, `sol` are identical peers. Each runs the same three loops: renew its own
+heartbeat, watch its two peers' heartbeats for a lapse, and claim/work/verify incidents. Which
+agent detects an outage, which one fixes it, and which one verifies the fix is decided by who's
+alive and who acts first — not by a fixed identity. An incident can be filed two ways: an agent
+reports an external signal it noticed directly (e.g. a monitored system going quiet), or a peer's
+watch loop detects that agent's own heartbeat has lapsed and files the outage on its behalf.
 
 ### Entity roles
 
-| Role     | `memory_type` | TTL | Written by |
-| -------- | -------------- | --- | ---------- |
-| incident | `event`   | 600 blocks | reporting agent |
-| claim    | `claim`   | 12 blocks, renewed while working | working agent |
-| lane     | `lane`    | 600 blocks | each agent, once, on first Swarm write |
-| done     | `done`    | 600 blocks | finishing agent |
-| verdict  | `verdict` | 600 blocks | reporting agent, after checking the fix |
+| Role      | `memory_type` | TTL | Written by |
+| --------- | -------------- | --- | ---------- |
+| incident  | `event`     | 600 blocks | reporting agent |
+| claim     | `claim`     | 12 blocks, renewed while working | working agent |
+| lane      | `lane`      | 600 blocks | each agent, once, on first Swarm write |
+| done      | `done`      | 600 blocks | finishing agent |
+| verdict   | `verdict`   | 600 blocks | verifying agent, after checking the fix |
+| heartbeat | `heartbeat` | 8 blocks, renewed every ~1/3 | each agent, about itself, tag `agent-<id>` |
 
-Claims expire on their own; everything else persists. All five roles share one `tag` per incident
-and differ only by `memory_type`.
+Claims and heartbeats expire on their own; everything else persists. The first five roles share
+one `tag` per incident and differ only by `memory_type`; a heartbeat's tag identifies the agent,
+not an incident.
 
 ### Lanes
 
@@ -135,31 +138,45 @@ of restarting.
 - **Is anyone alive on this incident?** `and(eq(app,'hydra'), eq(tag,…), eq(memory_type,'claim'))`
   — zero rows: free to take; one row: held, provably.
 - **Who has worked it, and what did they produce?** query `memory_type='lane'` for the *who*;
-  walk each owner's lane from index 0 until 404 for the *what*.
+  walk each owner's lane from index 0 until 404 for the *what*. This returns every owner who has
+  ever touched the incident, not just the most recent one.
+- **Is a peer still alive?** `and(eq(app,'hydra'), eq(tag,'agent-<id>'), eq(memory_type,'heartbeat'))`
+  — zero rows on two consecutive polls: that agent is down, and the watching agent files the
+  outage as a new incident (`tag: outage-<id>`).
 
 ### Lifecycle
 
+A double hand-off — two agents can die in sequence, and the third has to notice both:
+
 ```
-atlas                    nova                       sol
-  ├─ swarm: report → lane index 0                     │
-  ├─ event/42 ─────────────►│                          │
-  │                        ├─ query verdict/done/claim/42 → none
-  │                        ├─ claim/42 ──────────────►│ query claim/42 → held, backs off
-  │                        ├─ swarm: diagnosis → lane index 0
-  │                        ├─ lane/42, renew every ~1/3 lease
-  │                        ✗  dies                     │
-  │                        lease lapses                │
-  │                                                   ├─ query claim/42 → none
-  │                                                   ├─ query lane/42 → nova's wallet
-  │                                                   ├─ read nova's lane, resume
-  │                                                   ├─ claim/42 ─────────────►
-  │                                                   ├─ swarm: fix → lane index (next free)
-  │                                                   ├─ lane/42, done/42
-  │                                                   └─ delete own claim
-  │◄─ query done/42 → sol's row ──────────────────────┤
-  ├─ read sol's lane, re-check the original signal    │
-  └─ verdict/42 outcome=fixed                         │
+                nova                                  sol                        atlas
+  ├─ claim/42 (12-block lease)                          │                          │
+  ├─ swarm: diagnosis → lane index 0                     │                          │
+  ├─ lane/42, renew claim + heartbeat every ~1/3 lease   │                          │
+  ✗  dies — claim lapses, heartbeat lapses               │                          │
+                                                          ├─ query claim/42 → none
+                                                          ├─ query lane/42 → nova's wallet
+                                                          ├─ read nova's lane, resume from diagnosis
+                                                          ├─ claim/42 ─────────────►
+                                                          ├─ swarm: partial fix → lane index 0
+                                                          ├─ lane/42, renew claim + heartbeat
+                                                          ✗  dies too — claim lapses, heartbeat lapses
+                                                                                    │
+                                                                    ├─ query claim/42 → none
+                                                                    ├─ query lane/42 → nova's AND sol's wallets
+                                                                    ├─ check both: claim lapsed AND
+                                                                    │  heartbeat lapsed → both confirmed
+                                                                    │  dead, not just slow
+                                                                    ├─ read sol's lane (the latest,
+                                                                    │  not nova's stale diagnosis)
+                                                                    ├─ claim/42, finish the fix
+                                                                    ├─ lane/42, done/42, delete own claim
+                                                                    └─ verdict/42 outcome=fixed
 ```
+
+A single hand-off (one death, one successor) is the same mechanism with one fewer round — the
+double case is what proves `takeOver` handling multiple prior owners, and heartbeat-plus-claim
+together confirming death rather than either alone.
 
 Write order in `finish`: lane content → `lane` row → `done` → delete own claim. Check order
 before claiming: `verdict` → `done` → `claim`.
