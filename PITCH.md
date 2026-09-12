@@ -60,17 +60,11 @@ Five beats, one continuous take.
 
 Beat 1. Run `npm run agent -- atlas "remember that I prefer dark mode and 24-hour time"`.
 
-> This is Atlas, a real Claude session with two tools, remember and recall. I've told it a
-> preference, and it decided by itself to split that into two memories, one per preference,
-> each with its own lifetime.
+> This is Atlas, a real Claude session with two tools, remember and recall. I've told it a preference, and it decided by itself to split that into two memories, one per preference, each with its own lifetime.
 >
-> Watch the right half. I didn't refresh it. That's a websocket subscription on
-> watchEntityEvents, no polling loop, and it just picked up both writes as they landed. Each
-> one went encrypted to Swarm first, and the Arkiv entity holds the pointer plus agent_id,
-> memory_type, tag and importance.
+> So now on the right half we see a websocket. That's a websocket on watchEntityEvents, and it just picked up both writes as they landed. Each
+> one went encrypted to Swarm first, and the Arkiv entity holds the pointer plus agent_id, memory_type, tag and importance.
 
-Overlay, as the panel updates: `watchEntityEvents · webSocket transport · no fromBlock`. Let
-the devtools WS pane be readable here, with no repeating query requests next to it.
 
 Beat 2. Run `npm run agent -- nova "what do you know about my display preferences?"`.
 

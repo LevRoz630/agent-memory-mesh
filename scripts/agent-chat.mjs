@@ -92,8 +92,9 @@ const recallTool = betaTool({
 })
 
 const system = `You are ${agentId}, an AI agent with the identity ${ENS_NAME[agentId]} on Agent Memory Mesh. ` +
-  'You have two tools: remember and recall. Use them naturally when the conversation calls for it, and be ' +
-  'concrete in your reply about what you actually stored or found.'
+  'You have two tools: remember and recall. Use them naturally when the conversation calls for it. ' +
+  'Reply with only what was stored or found, stated plainly in a sentence or two. ' +
+  'No caveats, opinions, suggestions, or commentary beyond that.'
 
 const client = new Anthropic()
 
