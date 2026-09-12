@@ -102,6 +102,7 @@ export async function renewClaim(ctx, agentId, entityKey, leaseBlocks = CLAIM_LE
   while (shouldContinue()) {
     const start = await currentBlock(pub)
     await waitForBlock(pub, start + BigInt(renewEveryBlocks))
+    if (!shouldContinue()) break
     try {
       await extendMemory(signer.wallet, { entityKey, ttlBlocks: leaseBlocks })
     } catch (e) {
