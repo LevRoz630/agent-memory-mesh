@@ -45,10 +45,12 @@ export function derivePublicKey(privateKeyBuffer) {
 }
 
 // Raw ECDH output is not a key — HKDF is what makes this ECIES rather than "computeSecret and
-// hope". `info` binds the derived key to which agent slot it's wrapping, so two recipients never
-// derive the same wrap key even if (hypothetically) they shared a public key.
-function deriveWrapKey(sharedSecret, agentIndex) {
-  return Buffer.from(hkdfSync('sha256', sharedSecret, Buffer.alloc(0), Buffer.from([agentIndex]), WRAP_KEY_LEN))
+// hope". `info` binds the derived key to which agent slot it's wrapping AND to the ephemeral
+// public key for this memory, so two recipients never derive the same wrap key even if
+// (hypothetically) they shared a public key, and a wrap key can never be reused across memories.
+function deriveWrapKey(sharedSecret, agentIndex, ephemeralPub) {
+  const info = Buffer.concat([Buffer.from([agentIndex]), ephemeralPub])
+  return Buffer.from(hkdfSync('sha256', sharedSecret, Buffer.alloc(0), info, WRAP_KEY_LEN))
 }
 
 export function encryptForRoster(plaintext, recipients) {
@@ -64,7 +66,7 @@ export function encryptForRoster(plaintext, recipients) {
 
   const wrappedEntries = recipients.map(({ agentIndex, publicKey }) => {
     const shared = ephemeral.computeSecret(publicKey)
-    const wrapKey = deriveWrapKey(shared, agentIndex)
+    const wrapKey = deriveWrapKey(shared, agentIndex, ephemeralPub)
     const wrapIv = randomBytes(WRAP_IV_LEN)
     const wrapCipher = createCipheriv('aes-256-gcm', wrapKey, wrapIv)
     const wrappedKey = Buffer.concat([wrapCipher.update(contentKey), wrapCipher.final()])
@@ -106,7 +108,7 @@ export function decryptWithKey(blob, agentIndex, privateKeyBuffer) {
   const ecdh = createECDH('secp256k1')
   ecdh.setPrivateKey(privateKeyBuffer)
   const shared = ecdh.computeSecret(ephemeralPub)
-  const wrapKey = deriveWrapKey(shared, agentIndex)
+  const wrapKey = deriveWrapKey(shared, agentIndex, ephemeralPub)
 
   const wrapDecipher = createDecipheriv('aes-256-gcm', wrapKey, wrapIv)
   wrapDecipher.setAuthTag(wrapTag)
