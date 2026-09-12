@@ -8,6 +8,11 @@
    no query, no history. The queryable audit trail is Arkiv (`queryByTag` /
    `queryByTagAndType`). Addressed: moved to slide 5, Swarm slide reworded.
 
+3. **Slide 3 and 7 described only a single hand-off and claimed no liveness tracking exists.**
+   Both are now stale: the demo does a double hand-off (two agents die in sequence), and
+   heartbeats — the same expiring-lease trick as claims — are the liveness signal. Addressed:
+   slide 3 speaker note and slide 7 reworded.
+
 Open: `src/swarm.mjs` talks to one public gateway (`api.gateway.ethswarm.org`). If a judge
 asks "isn't that a single point of failure?", the honest answer is that it is for the demo,
 and a production deployment points each data center at its own Bee node or a different
@@ -57,8 +62,10 @@ fails too.
   4. Nova's region fails mid-fix. Its claim expires on its own.
   5. **Sol** (DC-3) takes over and finishes.
 
-**Speaker note:** This is the demo you're about to see. Nobody had to notice Atlas or Nova
-died, and nobody had to run a service tracking which agents are alive.
+**Speaker note:** This is the demo you're about to see. Every agent proves it's alive with the
+same trick a claim already uses — a lease that expires unless renewed — so "is Atlas still up?"
+is a query, not a separate monitoring system. No agent had to be told the others died; each one
+noticed on its own.
 
 ---
 
@@ -115,10 +122,17 @@ that are down, and it's too sensitive to hand to a third party in the clear.
 - Claim → work → done / verdict
 - Tie-break handling when two agents claim at once.
 - Orphaned claims are closed automatically.
-- Any agent can pick up a lapsed claim and keep going.
+- Every agent also renews its own heartbeat — the same expiring-lease mechanism, reused for
+  "am I alive" instead of "am I working this."
+- A peer confirms death two ways at once: the claim lapsed *and* the heartbeat lapsed. Either
+  alone could just mean "running slow" — both together means gone.
+- Any agent can pick up a lapsed claim and keep going, even from a second agent that also died
+  mid-recovery.
 
-**Speaker note:** This slide is where the name pays off. Walk through one claim getting
-dropped and another agent picking it up.
+**Speaker note:** This slide is where the name pays off. Walk through the double hand-off: one
+agent dies mid-fix, a second picks it up from exactly where the first left off, and that second
+agent dies too — the third has to find both their trails and prove both are actually gone before
+finishing the job itself.
 
 ---
 
