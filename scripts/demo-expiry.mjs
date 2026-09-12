@@ -55,8 +55,7 @@ try {
   console.log(`\nAFTER expiry — same query returns ${after.length} row(s)`)
 
   if (before.length > 0 && after.length === 0) {
-    console.log('\nPASS — entity left query results on its own. Expiry is the mechanism;')
-    console.log('nothing in this script ever called deleteEntity.')
+    console.log('\nPASS')
   } else {
     console.log('\nUNEXPECTED — re-check expiry semantics before relying on this in the demo.')
   }
