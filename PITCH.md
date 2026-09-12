@@ -42,7 +42,6 @@ Show: tthe visusalisation.png
 
 Say, 89 words:
 
-
 Every agent framework keeps memory in one bucket. A vector DB, a Postgres table, a JSON
 blob. That bucket can't say whose memory it is once the host app changes, can't expire
 anything without a cleanup job, and can't tell a second agent that something moved.
@@ -65,8 +64,7 @@ Beat 1. Run `npm run agent -- atlas "remember that I prefer dark mode and 24-hou
 > So now on the right half we see a websocket. That's a websocket on watchEntityEvents, and it just picked up both writes as they landed. Each
 > one went encrypted to Swarm first, and the Arkiv entity holds the pointer plus agent_id, memory_type, tag and importance.
 
-
-Beat 2. 
+Beat 2.
 
 > Now as we can see the second agent, Nova, a separate process that has never spoken to Atlas. It checked its own memories,
 > found nothing, queried Atlas's, and answered correctly. It uses the compound query.
@@ -89,24 +87,20 @@ it earns its place.
 
 Say, 66 words:
 
-> Who needs this: us, this week. Our agents' memory is locked to one framework's session
+> Who needs this: me, this week. Our agents' memory is locked to one framework's session
 > store, and an agent's identity is just an API key. On September 14th we present Agent
 > Memory Mesh as the memory layer for an enterprise agent deployment at the HPE and NVIDIA
 > hackathon in Geneva. The repo is public with setup docs, so the builders in that room are
-> our first hundred users.
+> our first hundred users and I am excited to show it to the judges from Nvidia and HPE.
 
 ## Clip 4, 2:40 to 3:00, feedback
-
-Show: `feedback.md` on GitHub, scrolled to finding 3, with the 1/6 versus 6/6 table visible.
 
 Overlay: `feedback.md · 4 findings · 4 runnable scripts`.
 
 Say, 54 words:
 
 > Four findings in `feedback.md`, each with a script you can run yourself. The sharpest:
-> Arkiv's concurrent writes silently drop without viem's nonce manager, one of six landed, no
-> error mentioning a nonce. Wire in the nonce manager and it's six of six. Expiry behaved
-> exactly as documented, every time we tested it.
+> Arkiv's concurrent writes silently drop without viem's nonce manager, one of six landed, no error mentioning a nonce. Wire in the nonce manager and it's six of six. 
 
 ## Timing
 
