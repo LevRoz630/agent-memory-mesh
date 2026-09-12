@@ -10,7 +10,7 @@ Each finding has a runnable script that reproduces it against the live network a
 the observed values. Run one, or all of them:
 
 ```
-npm run feedback:repro           # every finding, Arkiv and Swarm
+npm run feedback:repro           # every finding
 npm run feedback:repro -- 03     # just finding 3
 ```
 
