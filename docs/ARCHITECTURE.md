@@ -402,23 +402,63 @@ under its own key and grants Nova and Sol; revocation is a list update, not a ke
 That is the version where "content addressed, publisher controlled" is true rather than
 aspirational, and it is the spine of the incident workflow in §7.
 
-**Three routes to it, all with a real cost. This is the open decision.**
+**Decision 1 — an agent's chain identity is its Swarm identity. Settled.** ACT-style access
+control is ECDH over secp256k1, and the per-agent Arkiv wallets are secp256k1 keys. So an
+agent has one identity: the key that signs its entities is the key content is encrypted to.
+`agent_id`, `owner`, and "who can read this" collapse into a single fact. The honest caveat
+is that using one key for both signing and key agreement breaks key separation as a
+principle; Swarm's own node identity does the same, so it is normal practice rather than
+novel risk, but a cryptographer will name it.
 
-1. *A Bee node of our own.* `bee-js` already exposes `createGrantees`, `getGrantees` and
-   `patchGrantees`, so this is a config change, not new code — but those methods call
-   `/grantee`, which the public gateway answers with 404. A node was stood up and torn down
-   during this work: it runs, deploys a chequebook on first boot, and takes an unmeasured
-   time to finish initialising. Feasible, not free.
-2. *Implement ACT ourselves.* The format is not a secret: a JSON manifest of
-   `{lookupKey, encryptedAccessKey}` entries, each grantee's lookup key derived by ECDH
-   against the publisher's key, uploaded as an ordinary chunk. `@snaha/swarm-id` does exactly
-   this client-side, which proves a node is not strictly required — but that library cannot
-   be imported server-side (§4), so this means writing and testing the crypto ourselves.
-3. *Keep app-level AES and say so.* What exists today. Honest, already working, and the thing
-   §7's grant-forward workflow cannot be built on.
+**Decision 2 — a Bee node is not required. Verified.** Two separate things were conflated:
+Bee's `/grantee` *endpoint*, and access control itself. The endpoint is a convenience that
+performs the crypto server-side. Doing the crypto ourselves needs no node at all, and both
+halves are now proven: stamped chunks upload and download through the public gateway (§4),
+and ECDH grant-forward works between the existing agent keys using nothing but `node:crypto`:
 
-The choice is really between (1) before the deadline and (3) with a clear-eyed slide. (2) is
-the best design and the worst use of the remaining days.
+```
+ECDH agrees both directions:        true
+nova recovers the content key:      true
+sol cannot decrypt (not a grantee): correct
+new dependencies required:          none
+```
+
+The publisher derives a shared secret per grantee, wraps the content key with it, and writes
+a small manifest of `{grantee → wrapped key}` as one more stamped chunk. A grantee derives
+the same secret from its own key and the publisher's public key.
+
+**What that costs: interoperability, not capability.** This is not Bee's ACT. Bee's exact
+lookup-key derivation is undocumented — Swarm's own page says only that "using Diffie-Hellman
+key derivation, two additional keys will be derived from the session key: a lookup key and an
+access key decryption key" (https://docs.ethswarm.org/docs/concepts/access-control/), and
+matching it byte-for-byte would mean reversing it from `@snaha/swarm-id`'s minified bundle or
+Bee's Go source. Our own scheme means no other Swarm client can read our content even if
+granted. For a closed set of three agents that is not a loss. For "any Swarm tool can consume
+this" it would be.
+
+**The remaining option, if it appears: someone else's node.** The Swarm team is already
+providing infrastructure; a Bee endpoint with `/grantee` exposed would give real,
+interoperable ACT for no implementation work at all, since `bee-js` already has
+`createGrantees`, `getGrantees` and `patchGrantees`. Worth one question before writing any
+crypto.
+
+**Decision 3 — the grantee roster is fixed when the incident is written, and includes every
+worker.** Extending a grantee list is signed by the publisher, so if Atlas files an incident
+and dies, no reader can ever be added to it. Granting to the whole known roster up front —
+Atlas, Nova and Sol — is therefore not laziness but the thing that makes crash-takeover
+work: Sol can read and claim an incident whose author is long gone, because the grant was
+already there. A tighter "grant only to whoever claims it" rule would be more principled and
+would break the exact scenario §7 is built on.
+
+The consequence to state plainly: a fourth agent joining later cannot read incidents filed
+before it existed. The mesh is open to new writers, closed to new readers of old content.
+
+**Decision 4 — the return path is point-to-point.** The working agent grants only Atlas on
+the blob it writes, because Atlas is the one agent assumed to be up: it is the monitor, and
+under §7's merge it is also the verifier. So the grant graph is deliberately asymmetric —
+fan-out to the roster on the way in, point-to-point on the way back. The cost is that Atlas
+is load-bearing at both ends, which is where this design is most exposed: the agents modelled
+as mortal are the workers, but the agent whose death actually breaks the loop is the monitor.
 
 **Postage is solved, and is now a clock.** The drive credential means we sign our own stamps
 against our own batch (§4) — "we pay for our own storage" is no longer future work. What
@@ -458,9 +498,9 @@ boundary.
 
 1. **The batch expires around 2026-09-16.** Does it top up, or do we need a second drive?
    Every other Swarm question is downstream of this one.
-2. ACT needs either our own Bee node or our own implementation of the grantee manifest
-   (§8) — the public gateway 404s `/grantee` and the library that does it client-side is
-   browser-only. Which is the right call with the time left?
+2. ACT is settled as our own ECDH scheme over the agents' chain keys, no Bee node (§8).
+   The one thing that would change that: does the Swarm team have a Bee endpoint with
+   `/grantee` exposed? That would give real, interoperable ACT for no implementation work.
 3. Now that each agent signs for itself, no agent can release or renew another's claim —
    the engine gates both on ownership. Is "lapsing is the only way abandoned work frees up"
    the strongest version of the argument, or does a mentor read it as a missing feature?
