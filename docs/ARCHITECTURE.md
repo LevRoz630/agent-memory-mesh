@@ -129,11 +129,7 @@ on error (`server.mjs:46-71`).
 
 ## 4. The Swarm leg
 
-**What the code does.** `src/swarm.mjs` encrypts with AES-256-GCM, packs
-`[12-byte IV][16-byte auth tag][ciphertext]` into one blob, and POSTs it to
-`${SWARM_GATEWAY}/bytes`, default `https://api.gateway.ethswarm.org` (`src/swarm.mjs:10, 25-33, 45-60`). Download reverses it (`src/swarm.mjs:62-70`). An 8-second timeout exists because a
-gateway that accepts the connection and then stalls leaves a bare `fetch()` pending forever,
-hanging whichever route awaits it (`src/swarm.mjs:11-13`).
+**What the code does.** A random content key is generated for each memory; the content is encrypted with AES-256-GCM and packed as `[12-byte IV][16-byte auth tag][ciphertext]` into one blob. The content key is wrapped per roster recipient via ECIES (ECDH over secp256k1 + HKDF), using each agent's `ARKIV_PRIVATE_KEY_<AGENT>` as their decryption identity — the same key that signs their Arkiv transactions (`src/swarm.mjs:8-10`). There is no shared secret. The wrapped blob is POSTed to `${SWARM_GATEWAY}/chunks`, default `https://api.gateway.ethswarm.org`, as a stamped chunk (`src/swarm.mjs:25-33, 45-60`). Download attempts decryption with each configured agent's private key until one successfully unwraps the content key, then decrypts the content (`src/swarm.mjs:62-70`). An 8-second timeout exists because a gateway that accepts the connection and then stalls leaves a bare `fetch()` pending forever, hanging whichever route awaits it (`src/swarm.mjs:11-13`).
 
 **Which SDK, and why not the other one.** `@ethersphere/bee-js` is a dependency and works
 server-side. `@snaha/swarm-id` — the library behind Swarm's drive UI, and the one that
@@ -398,8 +394,13 @@ wallets come back, not fifty, and the cost is one transaction per agent per inci
 how many lane updates follow. Probing the whole fleet's lanes instead would be both O(agents)
 and slow — each lane probe is a walk to find the latest index, at an 8-second timeout each.
 
-The roster in the incident's envelope bounds this a second time: it is the set of wallets that
-can decrypt the report at all, so it is also the largest set that could ever have worked it.
+The roster in the incident's envelope bounds this a second time — in principle: each memory is
+sealed to a roster of agent public keys (§2's envelope encryption), so it is *shaped* like a
+bound on who could ever decrypt it. In this deployment that bound is not actually enforced,
+because one process holds all three agents' private keys and does both the sealing and the
+opening — any party with server access can decrypt everything regardless of roster. What's real
+today is a demonstrated per-agent sealing mechanism; what would make the bound real is splitting
+the agents into separate processes with separate key custody, which is future work.
 
 ### Resume rather than re-do
 
