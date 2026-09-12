@@ -36,7 +36,7 @@ const APP = 'hydra'
 
 export const AGENT_IDS = ['atlas', 'nova', 'sol']
 
-export const MEMORY_TYPES = ['event', 'claim', 'lane', 'done', 'verdict']
+export const MEMORY_TYPES = ['event', 'claim', 'lane', 'done', 'verdict', 'heartbeat']
 
 // One signer per agent, so `owner` on an entity is whichever agent wrote it, not whichever
 // key the server happened to hold. Each account carries its own nonce sequence. An agent
