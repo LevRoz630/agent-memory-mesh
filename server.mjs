@@ -39,10 +39,9 @@ function broadcast(msg) {
 }
 
 // This is the Mission 03 artifact — see watchMemories in src/arkiv.mjs for the mechanism.
-watchMemories(
-  wsClient,
-  pub,
-  async ({ entityKey, owner, expiresAt, attributes }) => {
+watchMemories(wsClient, pub, {
+  onEvent: (e) => broadcast({ type: 'log', ...e }),
+  onMemory: async ({ entityKey, owner, expiresAt, attributes }) => {
     let content = null
     try {
       content = await readMemoryContent(attributes)
@@ -56,10 +55,10 @@ watchMemories(
       content,
     })
   },
-  (err) => {
+  onError: (err) => {
     console.error('watch error:', err.message)
     broadcast({ type: 'watch_error', message: err.message })
   },
-)
+})
 
 httpServer.listen(PORT, () => console.log(`listening on http://localhost:${PORT}`))

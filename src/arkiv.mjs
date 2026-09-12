@@ -118,20 +118,21 @@ export async function queryRecent(pub, { agentIds = ['atlas', 'nova'], limit = 2
  * required for a real subscription rather than HTTP polling (verified in pre-flight,
  * evidence/ws-proxy.mjs).
  */
-export function watchMemories(wsClient, pub, onMemory, onError) {
+export function watchMemories(wsClient, pub, { onMemory, onEvent, onError }) {
   return wsClient.watchEntityEvents({
     onEntityCreated: async ({ entityKey, owner, expiresAt }) => {
-      // The event carries no attributes — this bounded follow-up read is what actually
-      // fetches them. `owner` above is the only pre-read filter available; real
-      // attribute-based filtering happens after this read, on the fetched entity.
+      onEvent?.({ phase: 'event', entityKey, owner })
       try {
         const entity = await pub.getEntity(entityKey)
         const raw = entity.attributes ?? {}
-        if (!(ATTR.agentId in raw)) return // not an agent_memory entity — irrelevant, skip silently
+        if (!(ATTR.agentId in raw)) {
+          onEvent?.({ phase: 'ignored', entityKey })
+          return
+        }
+        onEvent?.({ phase: 'resolved', entityKey, owner })
         onMemory({ entityKey, owner, expiresAt, attributes: unwrapAttributes(raw) })
       } catch {
-        // Expired/deleted between the event firing and this read, or a transient RPC error.
-        // Not fatal to the watcher — skip this one entity and keep watching.
+        onEvent?.({ phase: 'error', entityKey })
       }
     },
     onError,
