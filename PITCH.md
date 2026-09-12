@@ -75,8 +75,7 @@ Beat 2. Run `npm run agent -- nova "what do you know about my display preference
 
 Beat 3. Write an unrelated entity from the second wallet.
 
-> Here's an entity from a different wallet that has nothing to do with us. The event arrives,
-> our filter rejects it, and the panel doesn't move.
+> A write from a different wallet arrives, and our filter drops it before the panel moves.
 
 Beat 4. Bring up the second terminal tab, where `demo:expiry` has already passed its boundary.
 
@@ -98,13 +97,13 @@ Overlay, three seconds: `atlas-ethrome26.eth · nova-ethrome26.eth · ENSv2 beta
 with both registration transaction hashes. ENS gets no spoken words, so this card is where
 it earns its place.
 
-Say, 69 words:
+Say, 66 words:
 
-> Who needs this: teams putting multi-agent systems into enterprises, where memory is locked
-> to one framework's session store and the agent's identity is just an API key. That's us,
-> this week. On September 14th we present this as the memory layer for an enterprise agent
-> deployment at the HPE and NVIDIA hackathon in Geneva. The repo is public, so the builders in
-> that room are our first hundred users.
+> Who needs this: us, this week. Our agents' memory is locked to one framework's session
+> store, and an agent's identity is just an API key. On September 14th we present Agent
+> Memory Mesh as the memory layer for an enterprise agent deployment at the HPE and NVIDIA
+> hackathon in Geneva. The repo is public with setup docs, so the builders in that room are
+> our first hundred users.
 
 ## Clip 4, 2:40 to 3:00, feedback
 
@@ -112,23 +111,23 @@ Show: `feedback.md` on GitHub, scrolled to finding 3, with the 1/6 versus 6/6 ta
 
 Overlay: `feedback.md · 4 findings · 4 runnable scripts`.
 
-Say, 47 words:
+Say, 54 words:
 
-> Four findings, each with a script that reproduces it live. The best one: without viem's
-> nonce manager, one of six concurrent writes from the same wallet landed. With it, six of
-> six, and the error never mentions a nonce. Expiry, for its part, behaved exactly as
-> documented.
+> Four findings in `feedback.md`, each with a script you can run yourself. The sharpest:
+> Arkiv's concurrent writes silently drop without viem's nonce manager, one of six landed, no
+> error mentioning a nonce. Wire in the nonce manager and it's six of six. Expiry behaved
+> exactly as documented, every time we tested it.
 
 ## Timing
 
 | Clip | Window | Spoken words | Talking time |
 |---|---|---|---|
 | 1, why Arkiv | 0:00–0:36 | 89 | 0:37 |
-| 2, demo | 0:36–2:12 | 187 | 1:17 |
-| 3, who it's for | 2:12–2:40 | 69 | 0:29 |
-| 4, feedback | 2:40–3:00 | 47 | 0:19 |
-| Total | 3:00 | 392 | 2:42 |
+| 2, demo | 0:36–2:12 | 177 | 1:13 |
+| 3, who it's for | 2:12–2:40 | 66 | 0:27 |
+| 4, feedback | 2:40–3:00 | 54 | 0:22 |
+| Total | 3:00 | 386 | 2:39 |
 
-392 words at 145 a minute is 2:42 of talking. The other 18 seconds are commands executing in
-clip 2. The budget is spent, so anything added has to push something out. If a take runs
-short, the spare seconds belong to beat 3 and to holding on the expiry output a beat longer.
+386 words at 145 a minute is 2:39 of talking. The other 21 seconds are commands executing in
+clip 2. If a take runs short, the spare seconds belong to beat 3 and to holding on the expiry
+output a beat longer.
