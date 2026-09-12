@@ -21,6 +21,7 @@
     "verify:lane": "node --env-file=.env scripts/verify-lane.mjs",
     "verify:takeover": "node --env-file=.env scripts/verify-takeover.mjs",
     "verify:tie-break": "node --env-file=.env scripts/verify-tie-break.mjs",
+    "verify:peer-symmetry": "node --env-file=.env scripts/verify-demo-peer-symmetry.mjs",
     "generate:auditor-key": "node scripts/generate-auditor-key.mjs",
     "audit:export": "node scripts/audit-exporter.mjs"
   },

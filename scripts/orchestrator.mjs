@@ -51,14 +51,20 @@ async function workerLoop(agentId) {
   await new Promise((resolve) => setTimeout(resolve, 5000))
 
   renewing = false
-  await renewalPromise
+  const renewalResult = await renewalPromise
   if (renewalError) log(agentId, `renewal failed: ${renewalError.message}`)
+  // A lapsed lease is reported, not thrown. Finishing anyway would write `lane`/`done` rows for a
+  // tag another agent may hold by now, and delete an entity key that no longer exists.
+  if (renewalResult?.lost) {
+    log(agentId, 'lease lapsed before the work finished — dropping the claim without finishing')
+    return
+  }
   await finish(ctx, agentId, tag, claimed.entityKey, { note: `fixed by ${agentId}` })
   log(agentId, 'finished')
 }
 
 async function atlasVerifies() {
-  const result = await verify(ctx, tag)
+  const result = await verify(ctx, 'atlas', tag)
   log('atlas', `verdict: ${result.outcome}`)
 }
 

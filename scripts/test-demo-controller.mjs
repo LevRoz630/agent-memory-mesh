@@ -7,46 +7,77 @@ import { createDemo, WORK_STEPS } from '../src/demo.mjs'
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
-function fakeOps({ leaseMs }) {
+function fakeOps({ leaseMs, verifyFails = false, loseLeaseFor = null }) {
   const log = []
   const steps = []
-  let claim = null
-  let done = false
+  // Watch callbacks are kept so a test can fire an outage on demand, the way a real peer-watch loop
+  // would once a heartbeat lapses.
+  const watchers = new Map()
+  const claims = new Map()
+  const done = new Set()
   return {
     log,
     steps,
+    watchers,
+    async startHeartbeat(agentId, shouldContinue) {
+      log.push(['heartbeat-start', agentId])
+      while (shouldContinue()) await sleep(5)
+      log.push(['heartbeat-stop', agentId])
+    },
+    watchForPeerOutages(agentId, onOutageDetected) {
+      watchers.set(agentId, onOutageDetected)
+      return () => watchers.delete(agentId)
+    },
+    async verify(agentId, tag) {
+      if (verifyFails) throw new Error('no signer configured')
+      log.push(['verify', agentId, tag])
+      return { outcome: 'fixed' }
+    },
     async reportIncident(tag) {
       log.push(['report', tag])
       return { swarmRef: 'ab'.repeat(32), entityKey: '0x' + '1'.repeat(64) }
     },
     async tryClaim(agentId, tag) {
       await sleep(5)
-      if (done) return { held: false }
-      if (claim && claim.expiresAt > Date.now()) return { held: false }
-      claim = { agentId, expiresAt: Date.now() + leaseMs }
-      log.push(['claim', agentId, Date.now()])
-      return { held: true, entityKey: `claim-${agentId}` }
+      if (done.has(tag)) return { held: false }
+      const held = claims.get(tag)
+      if (held && held.expiresAt > Date.now()) return { held: false }
+      claims.set(tag, { agentId, expiresAt: Date.now() + leaseMs })
+      log.push(['claim', agentId, Date.now(), tag])
+      return { held: true, entityKey: `claim-${agentId}-${tag}` }
     },
     async renewClaim(agentId, _entityKey, shouldContinue) {
+      let ticks = 0
       while (shouldContinue()) {
         await sleep(leaseMs / 3)
-        if (!shouldContinue()) return
-        if (claim?.agentId === agentId) claim.expiresAt = Date.now() + leaseMs
+        if (!shouldContinue()) return { lost: false }
+        ticks += 1
+        // Stands in for the engine rejecting the extension because the claim already expired: the
+        // row is gone and renewClaim() reports the loss instead of throwing.
+        if (loseLeaseFor === agentId && ticks >= 2) {
+          for (const [tag, held] of claims) if (held.agentId === agentId) claims.delete(tag)
+          log.push(['lease-lost', agentId])
+          return { lost: true }
+        }
+        for (const held of claims.values()) {
+          if (held.agentId === agentId) held.expiresAt = Date.now() + leaseMs
+        }
       }
+      return { lost: false }
     },
     async readProgress(tag) {
-      return steps.length
+      return steps.filter((s) => s.tag === tag).length
     },
     async recordStep(agentId, tag, step) {
-      steps.push({ agentId, step })
+      steps.push({ agentId, tag, step })
     },
     async finish(agentId, tag, entityKey) {
-      done = true
-      claim = null
-      log.push(['finish', agentId])
+      done.add(tag)
+      claims.delete(tag)
+      log.push(['finish', agentId, tag])
     },
     async isDone(tag) {
-      return done
+      return done.has(tag)
     },
     receipts: [],
     async publishReceipt(state) {
@@ -74,7 +105,7 @@ const check = (name, ok) => {
 console.log('demo controller: kill, lapse, takeover, resume\n')
 
 const ops = fakeOps({ leaseMs: 150 })
-const demo = createDemo({ ops, timings: { stepMs: 60, retryMs: 20, startDelayMs: { nova: 0, sol: 40 } } })
+const demo = createDemo({ ops, timings: { stepMs: 60, retryMs: 20, verifyPollMs: 20, watchStartDelayMs: 20, startDelayMs: { nova: 0, sol: 40 } } })
 
 await demo.start()
 check('report filed at start', ops.log.some((l) => l[0] === 'report'))
@@ -90,26 +121,83 @@ const killedAt = Date.now()
 const novaSteps = ops.steps.filter((s) => s.agentId === 'nova').length
 
 await waitFor(() => demo.getState().phase === 'resolved', 'the incident to resolve', 5000)
+await sleep(50)
 const state = demo.getState()
 const solClaim = ops.log.find((l) => l[0] === 'claim' && l[1] === 'sol')
+const mainSteps = ops.steps.filter((s) => s.tag === state.tag)
 
 check('sol finished the incident', state.agents.sol.status === 'done')
-check('DC-1 comes back online once its rack is recovered', state.agents.atlas.alive && state.agents.atlas.status === 'watching')
-check('timeline records DC-1 coming back', state.timeline.some((e) => e.agentId === 'atlas' && e.text.includes('back online')))
 check('DC-2 stays down', !state.agents.nova.alive)
 check('sol claimed only after nova went down', solClaim && solClaim[2] >= killedAt)
 check('dead nova never finished', !ops.log.some((l) => l[0] === 'finish' && l[1] === 'nova'))
-check('every step done exactly once, in order', JSON.stringify(ops.steps.map((s) => s.step)) === JSON.stringify(WORK_STEPS.map((_, i) => i)))
-check('sol resumed where nova stopped', ops.steps.find((s) => s.agentId === 'sol')?.step === novaSteps)
+check('every step done exactly once, in order', JSON.stringify(mainSteps.map((s) => s.step)) === JSON.stringify(WORK_STEPS.map((_, i) => i)))
+check('sol resumed where nova stopped', mainSteps.find((s) => s.agentId === 'sol')?.step === novaSteps)
 check('timeline records the resume', state.timeline.some((e) => e.agentId === 'sol' && e.text.includes('resuming')))
 check('killing an unknown agent throws', (() => { try { demo.kill('mallory'); return false } catch { return true } })())
+check('every agent runs a heartbeat', ['atlas', 'nova', 'sol'].every((id) => ops.log.some((l) => l[0] === 'heartbeat-start' && l[1] === id)))
+check('a killed agent stops beating', ops.log.some((l) => l[0] === 'heartbeat-stop' && l[1] === 'nova'))
+// The seeded incident is about a rack, not an agent: resolving it must not resurrect an agent that
+// went down for an unrelated reason and that no peer has filed an outage for yet.
+check('a killed agent is NOT revived by an unrelated incident resolving', !state.agents.atlas.alive)
 
-await waitFor(() => state.receiptRef !== undefined && demo.getState().receiptRef !== null, 'receipt to be published')
+console.log('\nscenario: a peer notices the silence and DC-1 comes back the honest way\n')
+
+ops.watchers.get('sol')('atlas', 'outage-atlas')
+await waitFor(() => demo.getState().agents.atlas.alive, 'the outage flow to bring atlas back', 5000)
+const recovered = demo.getState()
+
+check('a peer worked the outage incident', ops.log.some((l) => l[0] === 'finish' && l[1] === 'sol' && l[2] === 'outage-atlas'))
+check('the outage is tracked as its own incident', recovered.incidents['outage-atlas']?.phase === 'resolved')
+check('the seeded incident is untouched by the outage work', recovered.incidents[recovered.tag].stepsDone === WORK_STEPS.length)
+check('DC-1 comes back online once its own outage is fixed', recovered.agents.atlas.status === 'watching')
+check('timeline records DC-1 coming back', recovered.timeline.some((e) => e.agentId === 'atlas' && e.text.includes('back online')))
+
+await waitFor(() => ops.log.some((l) => l[0] === 'verify'), 'someone to verify a resolved incident')
+const verdict = ops.log.find((l) => l[0] === 'verify')
+check('the verdict is written by an agent other than the finisher', verdict[1] !== 'sol')
+
+console.log('\nscenario: a permanently failing verify gives up instead of logging forever\n')
+
+const opsF = fakeOps({ leaseMs: 150, verifyFails: true })
+const demoF = createDemo({ ops: opsF, timings: { stepMs: 20, retryMs: 20, verifyPollMs: 20, watchStartDelayMs: 20, startDelayMs: { nova: 0, sol: 40 } } })
+await demoF.start()
+await waitFor(() => demoF.getState().phase === 'resolved', 'the incident to resolve (verify-failure test)', 5000)
+const countVerifyEvents = () => demoF.getState().timeline.filter((e) => /verif/.test(e.text)).length
+await sleep(400)
+const afterFirstWait = countVerifyEvents()
+await sleep(600)
+const afterSecondWait = countVerifyEvents()
+
+check('a failing verify stops retrying', afterSecondWait === afterFirstWait)
+check('a failing verify logs a bounded number of events', afterSecondWait > 0 && afterSecondWait <= 4)
+check('the last word is that it gave up', demoF.getState().timeline.some((e) => e.text.includes('gave up verifying')))
+
+console.log('\nscenario: a lapsed lease mid-work drops the claim instead of crashing the worker\n')
+
+const opsL = fakeOps({ leaseMs: 150, loseLeaseFor: 'nova' })
+const demoL = createDemo({ ops: opsL, timings: { stepMs: 60, retryMs: 20, verifyPollMs: 20, watchStartDelayMs: 20, startDelayMs: { atlas: 400, nova: 0, sol: 40 } } })
+await demoL.start()
+await waitFor(() => opsL.log.some((l) => l[0] === 'lease-lost' && l[1] === 'nova'), 'nova to lose its lease', 5000)
+await waitFor(() => demoL.getState().phase === 'resolved', 'the incident to resolve after the lapse', 5000)
+const lapsed = demoL.getState()
+const lapsedSteps = opsL.steps.filter((s) => s.tag === lapsed.tag)
+
+check('the worker whose lease lapsed said so and dropped the claim', lapsed.timeline.some((e) => e.agentId === 'nova' && e.text.includes('lapsed before the work finished')))
+check('a lapsed lease is not reported as a crash', !lapsed.timeline.some((e) => e.text.startsWith('error:')) && !Object.values(lapsed.agents).some((a) => a.status === 'error'))
+check('the incident still resolved', lapsed.phase === 'resolved')
+check('every step still done exactly once, in order', JSON.stringify(lapsedSteps.map((s) => s.step)) === JSON.stringify(WORK_STEPS.map((_, i) => i)))
+
+// This demo instance also resolves the unrelated `outage-atlas` incident triggered above (line
+// 145), and every resolved incident now publishes its own receipt under peer symmetry. `run`
+// only tracks one `receiptRef`, last-writer-wins across incidents -- so wait for THIS tag's own
+// publishReceipt call, not the shared field, or the wait can resolve on the other incident's.
+await waitFor(() => ops.log.some((l) => l[0] === 'publishReceipt' && l[1] === state.tag), 'receipt to be published')
 const stateAfterReceipt = demo.getState()
-const receiptCalls = ops.log.filter((l) => l[0] === 'publishReceipt')
-check('receipt published exactly once', receiptCalls.length === 1)
-check('receipt published with phase resolved', ops.receipts[0]?.phase === 'resolved')
-check('receipt published with a timeline containing "back online"', ops.receipts[0]?.timeline.some((e) => e.text.includes('back online')))
+const receiptCallsForTag = ops.log.filter((l) => l[0] === 'publishReceipt' && l[1] === state.tag)
+const receiptForTag = ops.receipts.find((r) => r.tag === state.tag)
+check('receipt published exactly once for this incident', receiptCallsForTag.length === 1)
+check('receipt published with phase resolved', receiptForTag?.phase === 'resolved')
+check('receipt published with a timeline containing "back online"', receiptForTag?.timeline.some((e) => e.text.includes('back online')))
 check('state.receiptRef equals the returned ref', stateAfterReceipt.receiptRef === 'cd'.repeat(32))
 check('timeline logs the published receipt event', stateAfterReceipt.timeline.some((e) => e.text.includes('published a public receipt')))
 
@@ -119,6 +207,16 @@ const protocolCalls = []
 const ops2 = {
   log: [],
   steps: [],
+  async startHeartbeat(_agentId, shouldContinue) {
+    while (shouldContinue()) await sleep(5)
+  },
+  watchForPeerOutages() {
+    return () => {}
+  },
+  async verify(agentId, tag) {
+    protocolCalls.push({ op: 'verify', tag })
+    return { outcome: 'fixed' }
+  },
   async reportIncident(tag) {
     protocolCalls.push({ op: 'reportIncident', tag })
     this.log.push(['report', tag])
