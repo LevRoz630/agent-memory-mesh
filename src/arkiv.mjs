@@ -27,6 +27,7 @@ const ATTR = {
   tag: 'tag',
   importance: 'importance',
   swarmRef: 'swarm_ref',
+  outcome: 'outcome',
 }
 
 // Written on every entity so the index can be selected as a whole — Arkiv rejects a
@@ -34,6 +35,8 @@ const ATTR = {
 const APP = 'agent-memory-mesh'
 
 export const AGENT_IDS = ['atlas', 'nova', 'sol']
+
+export const MEMORY_TYPES = ['event', 'claim', 'lane', 'done', 'verdict']
 
 // One signer per agent, so `owner` on an entity is the agent that wrote it rather than
 // whichever key the server happened to hold. Each account carries its own nonce sequence.
@@ -65,19 +68,24 @@ export function makeClients({ privateKey, httpUrl, wsUrl }) {
 
 // The applied expiry is resolved against whatever block the tx lands in, so it can sit past
 // what ttlBlocks asked for. Both are returned.
-export async function createMemory(wallet, { agentId, memoryType, tag, importance, swarmRef, ttlBlocks }) {
+export async function createMemory(wallet, { agentId, memoryType, tag, importance, swarmRef, ttlBlocks, outcome }) {
+  if (!MEMORY_TYPES.includes(memoryType)) {
+    throw new Error(`Invalid memory_type "${memoryType}" — must be one of: ${MEMORY_TYPES.join(', ')}`)
+  }
+  const attributes = {
+    [ATTR.app]: str(APP),
+    [ATTR.agentId]: str(agentId),
+    [ATTR.memoryType]: str(memoryType),
+    [ATTR.tag]: str(tag),
+    [ATTR.importance]: u64(BigInt(importance)),
+    [ATTR.swarmRef]: str(swarmRef),
+  }
+  if (outcome !== undefined) attributes[ATTR.outcome] = str(outcome)
   const { entityKey, txHash, expiresAt } = await wallet.createEntity({
     expires: ExpirationTime.fromBlocks(ttlBlocks),
     payload: stringToPayload(''),
     contentType: 'application/octet-stream',
-    attributes: {
-      [ATTR.app]: str(APP),
-      [ATTR.agentId]: str(agentId),
-      [ATTR.memoryType]: str(memoryType),
-      [ATTR.tag]: str(tag),
-      [ATTR.importance]: u64(BigInt(importance)),
-      [ATTR.swarmRef]: str(swarmRef),
-    },
+    attributes,
   })
   return { entityKey, txHash, appliedTtlBlocks: ttlBlocks, appliedExpiresAt: expiresAt }
 }
@@ -133,13 +141,17 @@ export async function queryByTag(pub, { tag, limit = 20 }) {
   return runQuery(pub, and(eq(ATTR.app, str(APP)), eq(ATTR.tag, str(tag))), limit)
 }
 
+export async function queryByTagAndType(pub, { tag, memoryType, limit = 20 }) {
+  return runQuery(pub, and(eq(ATTR.app, str(APP)), eq(ATTR.tag, str(tag)), eq(ATTR.memoryType, str(memoryType))), limit)
+}
+
 // An EntityCreated event carries only { entityKey, owner, expiresAt }, so each one has to be
 // read back to tell whether it is ours; a failed read (wrong type, already expired) is skipped
 // silently rather than surfaced, so unrelated chain events never reach onMemory.
 //
 // wsClient must use a webSocket() transport and no fromBlock may be passed, or this degrades
 // to HTTP polling.
-export function watchMemories(wsClient, pub, { onMemory, onEvent, onError }) {
+export function watchMemories(wsClient, pub, { onMemory, onEvent, onError, onExpired, onExtended }) {
   return wsClient.watchEntityEvents({
     onEntityCreated: async ({ entityKey, owner, expiresAt }) => {
       onEvent?.({ phase: 'event', entityKey, owner })
@@ -155,6 +167,14 @@ export function watchMemories(wsClient, pub, { onMemory, onEvent, onError }) {
       } catch {
         onEvent?.({ phase: 'error', entityKey })
       }
+    },
+    onExpiryExtended: ({ entityKey, owner, expiresAt }) => {
+      onEvent?.({ phase: 'extended', entityKey, owner })
+      onExtended?.({ entityKey, owner, expiresAt })
+    },
+    onEntityDeleted: ({ entityKey }) => {
+      onEvent?.({ phase: 'deleted', entityKey })
+      onExpired?.({ entityKey })
     },
     onError,
   })
