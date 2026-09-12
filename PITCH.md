@@ -5,6 +5,12 @@ written out below, next to what has to be on screen while it's said. Evidence a 
 want to check (block heights, transaction hashes, the `deleteEntity` count) lives in
 `README.md` and `feedback.md`, so the video only has to be convincing, not exhaustive.
 
+The scenario: Atlas is a monitoring agent on one framework, Nova is a remediation agent on a
+different one. They share no database, no session store, no API key. Atlas detects an
+incident and files it. Nova claims it and works it. If Nova's own process dies mid-fix, the
+claim has to expire on its own, without a cron job or a human noticing — because the outage
+that killed Nova could just as easily have killed whatever was supposed to clean up after it.
+
 Judging weights, and where each one is earned:
 
 | Weight | Criterion                                                                                             | Clip |
@@ -32,9 +38,8 @@ Judging weights, and where each one is earned:
 
 Clip 0
 
-Hey so I am Lev and I decided to build a shareable memory mesh for agents based on the provided software
-
-This is a storage system that uses Arkiv to index the memories written and signed by agents, stored on Swarm.
+Hey, I'm Lev, and I built a memory layer for agents that don't share infrastructure with each
+other, on top of Arkiv, Swarm and ENS.
 
 ## Clip 1, 0:00 to 0:36, why Web3 / Arkiv
 
@@ -42,40 +47,56 @@ Show: the visualisation.png
 
 Say:
 
-Every agent framework keeps memory in one bucket. A vector DB, a Postgres table, a JSON
-blob. That bucket can't say whose memory it is once the host app changes, can't expire
-anything without a cleanup job, and can't tell a second agent that something moved.
+Two agents, two frameworks, no shared database. One detects an incident, the other claims it
+and fixes it. The claim has to expire on its own if the second agent crashes mid-fix, or the
+task is stuck "in progress" forever. A cron job could do that cleanup, except the same outage
+that killed the agent can take the cron job down with it — it's on the same infrastructure.
 
-Arkiv does all three. Our whole product is one query: agent_id atlas, memory_type task,
-importance over seven, on typed attributes. So you can filter data as in Web2 databases if required, with multi-agent workflows being facilitated by agent signatures on the memories that allow one agent to reference the other and leave a clear trace of what was written and by whom.
+Arkiv's expiry isn't a process. It's enforced by block height, so it keeps running even when
+everything else is down. Same query before the lease lapses: one row. Same query after:
+zero. Nobody deleted it, nothing swept it, no service had to be alive to make that happen.
+That's the one thing a Postgres table with a TTL column can't promise you.
 
 ## Clip 2, 0:36 to 2:12, the demo
 
 Show: terminal left, mission-control page right, both in frame the entire time. Never
 full-screen the terminal. The right half moving on its own is the point of this clip.
 
-About 67 seconds, so roughly 29 seconds of the window is commands running.
 Four beats, one continuous take.
 
-Beat 1. Run `node --env-file=.env scripts/agent-chat.mjs atlas "remember that I prefer dark mode and 24-hour time"`.
+Beat 1. Run `node --env-file=.env scripts/agent-chat.mjs atlas "API latency on
+checkout-service just spiked to 4200ms p99, starting 02:11 UTC. File this as a task for
+remediation, high priority, short-lived."`
 
-> This is Atlas, a real Claude session with two tools, remember and recall. I've told it a preference, and it decided by itself to split that into two memories, one per preference, each with its own lifetime.
+> Atlas is a real Claude session with two tools, remember and recall, deciding for itself
+> what to write. It picked memory type task, high importance, and a short lease.
 >
-> So now on the right half we see a websocket. That's a websocket on watchEntityEvents, and it just picked up both writes as they landed. Each
-> one went encrypted to Swarm first, and the Arkiv entity holds the pointer plus agent_id, memory_type, tag and importance.
+> On the right, that's a websocket on watchEntityEvents picking up the write as it lands.
+> The detail — the actual log excerpt, the affected endpoints — went encrypted to Swarm
+> first, because it's too big for an Arkiv attribute to hold. Arkiv only gets the pointer,
+> plus agent_id, memory_type, tag and importance.
 
-Beat 2.
+Beat 2. Run `node --env-file=.env scripts/agent-chat.mjs nova "Anything flagged for
+remediation right now?"`.
 
-> Now as we can see the second agent, Nova, a separate process that has never spoken to Atlas. It checked its own memories,
-> found nothing, queried Atlas's, and answered correctly. It uses the compound query.
+> Nova is a separate process, a different framework, no shared database with Atlas. It
+> queried Atlas's memory directly, found the incident, and claimed it — its own memory
+> entry, its own short lease, saying "I've got this." Nova fetched the detail straight from
+> Swarm too, not from Atlas's app server, so it never had to trust that server with the
+> content.
 
-Beat 3. Now we write another memory that has a shorter expiry to check that it works.
+Beat 3. Cut to the second terminal tab, expiry output already complete.
 
-> This one I started ninety seconds ago, with an eight block lease. Same query before: one row. Same query after: zero. Nothing deleted it, no cleanup job ran. The row stopped existing because its lease ran out.
+> This is what happens if the agent holding a claim dies before finishing. I gave this one
+> an eight-block lease instead of waiting on a real crash. Same query before: one row. Same
+> query after: zero. Nothing deleted it, no cleanup job ran, and no other service had to be
+> up to make that happen — the claim just stopped existing on schedule.
 
 Beat 4. Said over the expiry output, still on screen.
 
-> Nothing here is mocked, all is live onchain and all writes can be traced through the links.
+> Once that claim is gone, any other agent can pick the task back up. Nothing here is
+> mocked. Every write is live and traceable through the links, and neither agent ever had to
+> trust the other's server with its own diagnostics.
 
 ## Clip 3, 2:12 to 2:40, who it's for
 
@@ -87,11 +108,12 @@ it earns its place.
 
 Say:
 
-> Who needs this: me, this week. Our agents' memory is locked to one framework's session
-> store, and an agent's identity is just an API key. On September 14th we present Agent
-> Memory Mesh as the memory layer for an enterprise agent deployment at the HPE and NVIDIA
-> hackathon in Geneva. The repo is public with setup docs, so the builders in that room are
-> our first hundred users and I am excited to show it to the judges from Nvidia and HPE.
+> Who needs this: me, this week. Platform teams stitching together agents across LangChain,
+> CrewAI and AutoGen hit this exact wall — memory locked to one framework's session store,
+> coordination that only survives if every service involved stays up. On September 14th I
+> present Agent Memory Mesh as the memory layer for an enterprise agent deployment at the
+> HPE and NVIDIA hackathon in Geneva. The repo is public with setup docs, so the builders in
+> that room are our first hundred users.
 
 ## Clip 4, 2:40 to 3:00, feedback
 
@@ -100,17 +122,18 @@ Overlay: `feedback.md · 4 findings · 4 runnable scripts`.
 Say:
 
 > Four findings in `feedback.md`, each with a script you can run yourself. The sharpest:
-> Arkiv's concurrent writes silently drop without viem's nonce manager, one of six landed, no error mentioning a nonce. Wire in the nonce manager and it's six of six. 
+> Arkiv's concurrent writes silently drop without viem's nonce manager, one of six landed, no
+> error mentioning a nonce. Wire in the nonce manager and it's six of six.
 
 ## Timing
 
 | Clip            | Window     | Talking time |
 | --------------- | ---------- | ------------ |
-| 1, why Arkiv    | 0:00–0:36 | 0:37         |
-| 2, demo         | 0:36–2:12 | 1:07         |
-| 3, who it's for | 2:12–2:40 | 0:27         |
+| 1, why Arkiv    | 0:00–0:36 | 0:36         |
+| 2, demo         | 0:36–2:12 | 1:08         |
+| 3, who it's for | 2:12–2:40 | 0:28         |
 | 4, feedback     | 2:40–3:00 | 0:22         |
-| Total           | 3:00       | 2:33         |
+| Total           | 3:00       | 2:34         |
 
-The other 27 seconds are commands executing in clip 2. If a take runs short, the spare seconds
-belong to holding on the expiry output a beat longer.
+The other 26 seconds are commands executing in clip 2. If a take runs short, the spare
+seconds belong to holding on the expiry output a beat longer.
