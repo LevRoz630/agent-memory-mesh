@@ -14,7 +14,7 @@
 // A batch shared as a key is only usable this way: the node holds no stamp issuer for it, so
 // every chunk has to arrive already signed.
 
-import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto'
+import { createCipheriv, createDecipheriv, randomBytes, createECDH, hkdfSync } from 'node:crypto'
 import { Bee, BatchId, PrivateKey, Stamper } from '@ethersphere/bee-js'
 
 const GATEWAY = process.env.SWARM_GATEWAY ?? 'https://api.gateway.ethswarm.org'
@@ -24,6 +24,93 @@ const FETCH_TIMEOUT_MS = 8000
 // One chunk. A content-addressed chunk carries at most 4096 bytes plus its 8-byte span, and a
 // single stamp covers exactly one chunk, so anything larger needs splitting and a stamp each.
 const MAX_BLOB_BYTES = 4096
+
+// One shared ephemeral keypair per memory, wrapped per recipient — cheaper than a fresh
+// ephemeral key per recipient, and standard multi-recipient ECIES practice.
+const WRAP_KEY_LEN = 32
+const EPHEMERAL_PUBKEY_LEN = 33 // compressed secp256k1 point
+const WRAP_IV_LEN = 12
+const WRAP_TAG_LEN = 16
+const WRAP_ENTRY_LEN = 1 + WRAP_IV_LEN + WRAP_TAG_LEN + WRAP_KEY_LEN // agentIndex + iv + tag + key
+
+export function derivePublicKey(privateKeyBuffer) {
+  const ecdh = createECDH('secp256k1')
+  ecdh.setPrivateKey(privateKeyBuffer)
+  return ecdh.getPublicKey(null, 'compressed')
+}
+
+// Raw ECDH output is not a key — HKDF is what makes this ECIES rather than "computeSecret and
+// hope". `info` binds the derived key to which agent slot it's wrapping, so two recipients never
+// derive the same wrap key even if (hypothetically) they shared a public key.
+function deriveWrapKey(sharedSecret, agentIndex) {
+  return Buffer.from(hkdfSync('sha256', sharedSecret, Buffer.alloc(0), Buffer.from([agentIndex]), WRAP_KEY_LEN))
+}
+
+export function encryptForRoster(plaintext, recipients) {
+  const contentKey = randomBytes(32)
+  const contentIv = randomBytes(12)
+  const cipher = createCipheriv('aes-256-gcm', contentKey, contentIv)
+  const ciphertext = Buffer.concat([cipher.update(plaintext), cipher.final()])
+  const contentTag = cipher.getAuthTag()
+
+  const ephemeral = createECDH('secp256k1')
+  ephemeral.generateKeys()
+  const ephemeralPub = ephemeral.getPublicKey(null, 'compressed')
+
+  const wrappedEntries = recipients.map(({ agentIndex, publicKey }) => {
+    const shared = ephemeral.computeSecret(publicKey)
+    const wrapKey = deriveWrapKey(shared, agentIndex)
+    const wrapIv = randomBytes(WRAP_IV_LEN)
+    const wrapCipher = createCipheriv('aes-256-gcm', wrapKey, wrapIv)
+    const wrappedKey = Buffer.concat([wrapCipher.update(contentKey), wrapCipher.final()])
+    const wrapTag = wrapCipher.getAuthTag()
+    return Buffer.concat([Buffer.from([agentIndex]), wrapIv, wrapTag, wrappedKey])
+  })
+
+  return Buffer.concat([
+    Buffer.from([recipients.length]),
+    ephemeralPub,
+    ...wrappedEntries,
+    contentIv,
+    contentTag,
+    ciphertext,
+  ])
+}
+
+export function decryptWithKey(blob, agentIndex, privateKeyBuffer) {
+  let offset = 0
+  const nRecipients = blob[offset]; offset += 1
+  const ephemeralPub = blob.subarray(offset, offset + EPHEMERAL_PUBKEY_LEN); offset += EPHEMERAL_PUBKEY_LEN
+
+  let match = null
+  for (let i = 0; i < nRecipients; i++) {
+    const entry = blob.subarray(offset, offset + WRAP_ENTRY_LEN)
+    offset += WRAP_ENTRY_LEN
+    if (entry[0] === agentIndex) match = entry
+  }
+  if (!match) throw new Error(`agent index ${agentIndex} is not on this memory's roster`)
+
+  const wrapIv = match.subarray(1, 1 + WRAP_IV_LEN)
+  const wrapTag = match.subarray(1 + WRAP_IV_LEN, 1 + WRAP_IV_LEN + WRAP_TAG_LEN)
+  const wrappedKey = match.subarray(1 + WRAP_IV_LEN + WRAP_TAG_LEN)
+
+  const contentIv = blob.subarray(offset, offset + 12); offset += 12
+  const contentTag = blob.subarray(offset, offset + 16); offset += 16
+  const ciphertext = blob.subarray(offset)
+
+  const ecdh = createECDH('secp256k1')
+  ecdh.setPrivateKey(privateKeyBuffer)
+  const shared = ecdh.computeSecret(ephemeralPub)
+  const wrapKey = deriveWrapKey(shared, agentIndex)
+
+  const wrapDecipher = createDecipheriv('aes-256-gcm', wrapKey, wrapIv)
+  wrapDecipher.setAuthTag(wrapTag)
+  const contentKey = Buffer.concat([wrapDecipher.update(wrappedKey), wrapDecipher.final()])
+
+  const decipher = createDecipheriv('aes-256-gcm', contentKey, contentIv)
+  decipher.setAuthTag(contentTag)
+  return Buffer.concat([decipher.update(ciphertext), decipher.final()])
+}
 
 // Rotating MEMORY_ENC_KEY makes already-uploaded content undecryptable; a Swarm reference
 // carries no key material.
