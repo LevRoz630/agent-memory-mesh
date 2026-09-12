@@ -23,14 +23,14 @@ const rememberTool = betaTool({
   name: 'remember',
   description:
     'Store something worth keeping about the user or the conversation, indexed and later retrievable. ' +
-    'Pick ttlBlocks yourself: short (tens of blocks) for task-scoped context that should lapse on its own, ' +
-    'up to the maximum for durable user preferences. ' +
+    'Pick ttlBlocks yourself: short (tens of blocks) for a lease that must lapse on its own, ' +
+    'up to the maximum for a record that should outlive the work. ' +
     'Use memoryType "claim" to take a task another agent filed: a claim is a lease, so give it a short ' +
     'ttlBlocks — if you stop working the task, it has to lapse on its own so someone else can pick it up.',
   inputSchema: {
     type: 'object',
     properties: {
-      memoryType: { type: 'string', enum: ['fact', 'task', 'preference', 'event', 'claim'] },
+      memoryType: { type: 'string', enum: ['event', 'claim', 'lane', 'done', 'verdict'] },
       tag: { type: 'string', description: 'short topic string' },
       importance: { type: 'integer', minimum: 0, maximum: 10 },
       content: { type: 'string', description: 'what to remember, in plain text' },
@@ -67,7 +67,7 @@ const recallTool = betaTool({
     type: 'object',
     properties: {
       agentId: { type: 'string', enum: AGENT_IDS },
-      memoryType: { type: 'string', enum: ['fact', 'task', 'preference', 'event', 'claim'] },
+      memoryType: { type: 'string', enum: ['event', 'claim', 'lane', 'done', 'verdict'] },
       minImportance: { type: 'integer', minimum: 0, maximum: 10 },
       tagPrefix: { type: 'string' },
     },

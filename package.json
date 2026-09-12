@@ -16,7 +16,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.125.0",
     "@arkiv-network/sdk": "^0.8.0",
-    "@ethersphere/bee-js": "^11.2.0",
+    "@ethersphere/bee-js": "^13.1.0",
     "express": "^4.21.0",
     "viem": "^2.56.3",
     "ws": "^8.21.3"

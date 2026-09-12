@@ -42,7 +42,7 @@ try {
   banner('1/4 — Atlas remembers')
   await run('node', [
     join(__dirname, 'agent-chat.mjs'), 'atlas',
-    `Please remember that I prefer dark mode and 24-hour time as lasting preferences. ` +
+    `Record an incident: checkout is returning 500s on /api/pay, p99 latency 4.2s, started 14:05. ` +
     `Tag each memory starting with "${runTag}-".`,
   ])
 
@@ -51,14 +51,14 @@ try {
   banner('2/4 — Nova recalls')
   await run('node', [
     join(__dirname, 'agent-chat.mjs'), 'nova',
-    'The user just asked me about their display settings — do we know anything relevant?',
+    'Is there an open incident I should be picking up? Check what Atlas has filed.',
   ])
 
   await wait(1000)
 
-  banner(`3/4 — compound query: agent_id=atlas AND memory_type=preference AND tag STARTSWITH "${runTag}-"`)
+  banner(`3/4 — compound query: agent_id=atlas AND memory_type=event AND tag STARTSWITH "${runTag}-"`)
   if (!(await checkServer())) throw new Error(`lost connection to ${BASE_URL} — is npm start still running?`)
-  const params = new URLSearchParams({ agentId: 'atlas', memoryType: 'preference', tagPrefix: `${runTag}-` })
+  const params = new URLSearchParams({ agentId: 'atlas', memoryType: 'event', tagPrefix: `${runTag}-` })
   const rows = await (await fetch(`${BASE_URL}/api/query?${params}`)).json()
   console.log(`${rows.length} row(s):`)
   for (const r of rows) {

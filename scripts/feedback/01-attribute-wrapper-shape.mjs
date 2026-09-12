@@ -20,7 +20,7 @@ console.log('WRITE — attributes given as str()/u64() constructors:')
 console.log("  { agent_id: str('" + agentId + "'), importance: u64(7n), ... }")
 const { entityKey, txHash } = await createMemory(wallet, {
   agentId,
-  memoryType: 'fact',
+  memoryType: 'event',
   tag: 'wrapper-shape',
   importance: 7,
   swarmRef: 'feedbackrepro',

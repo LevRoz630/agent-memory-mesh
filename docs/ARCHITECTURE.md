@@ -5,7 +5,8 @@ from. Every behavioural claim below is followed by its source: a file and line i
 a file and line in a dependency's shipped source, a line in Bee's OpenAPI spec, or a live
 request with its response. Nothing here is from a blog post or from memory.
 
-Read this before the design questions at the end. Those are the parts that are not settled.
+Sections 1 to 6 are what the code does today. Section 7 is the workflow being built toward;
+its last subsection says which parts of it are verified and which are not.
 
 ---
 
@@ -40,7 +41,7 @@ src/app.mjs                   REST surface (shared)
         │
         ▼
 src/memory.mjs                the only place the two legs are joined
-        ├──────────────► src/swarm.mjs   AES-256-GCM → POST /bytes → reference
+        ├──────────────► src/swarm.mjs   AES-256-GCM → stamped POST /chunks → reference
         └──────────────► src/arkiv.mjs   createEntity{ attributes incl. swarm_ref }
 ```
 
@@ -56,16 +57,18 @@ Order matters — a Swarm upload that fails must not leave an Arkiv row pointing
 definition, not from us: `node_modules/@arkiv-network/sdk/src/chains/tiramisu.ts:17-18`
 (`https://rpc.tiramisu.db-chain.testnet.arkiv.network`, and the same host over `wss://`).
 
-**Schema.** Six attributes, snake_case, defined once in `src/arkiv.mjs:23-30`:
+**Schema.** Six attributes on every row, snake_case, defined once in `src/arkiv.mjs:23-30`,
+plus one that only verdict rows carry:
 
-| Attribute       | Type    | Purpose                                                                  |
-| --------------- | ------- | ------------------------------------------------------------------------ |
-| `app`         | `str` | constant`agent-memory-mesh` — written by every participant, see below |
-| `agent_id`    | `str` | who wrote it - atlas, nova or sol                                        |
-| `memory_type` | `str` | `fact` / `task` / `preference` / `event` / `claim`             |
-| `tag`         | `str` | topic                                                                    |
-| `importance`  | `u64` | 0–10, supports`gte` filtering                                         |
-| `swarm_ref`   | `str` | the 64-hex Swarm reference                                               |
+| Attribute       | Type    | Values                                                                                            |
+| --------------- | ------- | ------------------------------------------------------------------------------------------------- |
+| `app`         | `str` | `agent-memory-mesh` — the only value; written by every participant so the index can be selected |
+| `agent_id`    | `str` | `atlas` / `nova` / `sol`                                                                    |
+| `memory_type` | `str` | `event` / `claim` / `lane` / `done` / `verdict` — the five workflow roles, nothing else (§7)         |
+| `tag`         | `str` | `incident-<id>` — the thread key every row of one piece of work shares                          |
+| `importance`  | `u64` | 0–10, supports `gte` filtering                                                                  |
+| `swarm_ref`   | `str` | the 64-hex Swarm reference                                                                        |
+| `outcome`     | `str` | `fixed` / `reopened` — on `verdict` rows only (§7)                                          |
 
 `claim` is a first-class type, not a tag convention: it is what an agent writes to take a
 task another agent filed, and it is the only type the demo TTL clamp applies to
@@ -88,8 +91,10 @@ against whichever block the transaction actually lands in, so requested and appl
 Both are recorded and returned rather than one being assumed
 (`src/arkiv.mjs:66-83`, `src/memory.mjs:9`).
 
-Nothing in this repo calls `deleteEntity`. That is the claim being demonstrated: rows leave
-by block height, not by anyone acting. `scripts/demo-expiry.mjs` writes an 8-block row and
+Nothing in this repo calls `deleteEntity` today. That is the claim being demonstrated: rows
+leave by block height, not by anyone acting. The one place §7's workflow does delete is a
+worker releasing *its own* claim on finishing, which is an optimisation over waiting for the
+lapse, never a way to free someone else's. `scripts/demo-expiry.mjs` writes an 8-block row and
 polls the same query until it returns zero rows; `scripts/watch-claim.mjs` does the same for
 a claim written by someone else.
 
@@ -135,7 +140,7 @@ server-side. `@snaha/swarm-id` — the library behind Swarm's drive UI, and the 
 implements ACT as plain functions — does not: importing it under Node fails with
 `window is not defined`, because its single bundle touches browser globals at module scope.
 Its published `exports` map offers one entry point, so there is no server-safe subpath to
-reach past it. That is the constraint that shapes §8's access-control options.
+reach past it. That is the constraint that rules out Bee's own ACT for us: the library that implements it as plain functions cannot be loaded here.
 
 **Why app-level encryption rather than Swarm's own.** Bee supports `swarm-encrypt`
 (`Swarm.yaml:185`, the `SwarmEncryptParameter`). Using it would push the reference from 64 to
@@ -194,11 +199,17 @@ store is a stranger's decision. On the chunk path it is ours, bounded by the bat
 batch is the live constraint: **depth 23, ~3.9 days of TTL, expiring around 2026-09-16.**
 Nothing else in this document has a deadline attached to it.
 
-**Not yet wired.** `src/swarm.mjs` still uses the unstamped `/bytes` path. Moving it to
-stamped chunks also means chunking payloads above 4 KB ourselves, and persisting the
-stamper's bucket counters between restarts — `Stamper.fromState` exists for exactly that, and
-without it a restarted process re-stamps buckets it has already filled and eventually gets
-`Bucket is full`.
+**Wired.** `src/swarm.mjs` uploads stamped chunks and reads them back; `SWARM_SIGNER_KEY`
+and `SWARM_POSTAGE_BATCH_ID` live in `.env`, with `SWARM_BATCH_DEPTH` defaulting to the
+drive's 23. Two limits are deliberate rather than solved:
+
+- **4 KB per memory.** One stamp covers exactly one chunk, so a larger payload needs splitting
+  with a stamp each. Instead of splitting, `uploadMemory` refuses:
+  `encrypted content is 4139 bytes; one stamped chunk holds 4096`.
+- **The stamper's bucket counters are in memory only.** One `Stamper` outlives the process's
+  uploads, so it never hands out a slot twice — but a restart resets the counts, and
+  `Stamper.fromState` exists precisely to persist them. Until it is used, a long-running
+  redeploy can eventually re-stamp a filled bucket and get `Bucket is full`.
 
 ---
 
@@ -207,8 +218,8 @@ without it a restarted process re-stamps buckets it has already filled and event
 **Write.** `POST /api/memory` → validate all six fields, rejecting non-integer importance and
 TTL before they reach the SDK → select the signer for `agentId`, refusing an unknown one (§7)
 → clamp the TTL if this is a `claim` (§6) → `writeMemory` →
-encrypt, upload, get reference → `createEntity` with the reference and five metadata
-attributes → return `{ entityKey, txHash, swarmRef, appliedTtlBlocks, appliedExpiresAt, requestedTtlBlocks, ttlClamped }` (`src/app.mjs:36-74`).
+encrypt, stamp, upload the chunk, get its address → `createEntity` with that reference and
+the five metadata attributes beside it → return `{ entityKey, txHash, swarmRef, appliedTtlBlocks, appliedExpiresAt, requestedTtlBlocks, ttlClamped }` (`src/app.mjs:36-74`).
 
 **Read.** `GET /api/query?agentId=…` → Arkiv predicate → for each row, fetch and decrypt its
 Swarm content. A failed fetch degrades to `{ error: 'content unavailable: …' }` on that row
@@ -302,49 +313,174 @@ now agree, and `owner` is the one the engine enforces. Two consequences follow i
 - **Each agent gets its own nonce sequence**, which is what made the concurrent funding and
   the three writes above land together (`feedback.md` finding 3).
 
-### The three entity roles
+### The five entity roles
 
-All three are ordinary `agent_memory` entities. The role is carried by `memory_type`; the tag
+All five are ordinary `agent_memory` entities. The role is carried by `memory_type`; the tag
 says which piece of work it concerns.
 
-| Role     | `memory_type` | `tag`           | TTL                             | Written by          |
-| -------- | --------------- | ----------------- | ------------------------------- | ------------------- |
-| incident | `event`       | `incident-<id>` | 600 blocks                      | the reporting agent |
-| claim    | `claim`       | `incident-<id>` | 8 blocks, renewed while working | the working agent   |
-| done     | `done`        | `incident-<id>` | 600 blocks                      | the finishing agent |
+| Role     | `memory_type` | `tag`           | TTL                             | Written by                                  |
+| -------- | --------------- | ----------------- | ------------------------------- | ------------------------------------------- |
+| incident | `event`       | `incident-<id>` | 600 blocks                      | the reporting agent                         |
+| claim    | `claim`       | `incident-<id>` | 8 blocks, renewed while working | the working agent                           |
+| lane     | `lane`        | `incident-<id>` | 600 blocks                      | each agent, once, on its first Swarm write  |
+| done     | `done`        | `incident-<id>` | 600 blocks                      | the finishing agent                         |
+| verdict  | `verdict`     | `incident-<id>` | 600 blocks                      | the reporting agent, after checking the fix |
 
-All three share one tag per piece of work and differ only by type, so every query in the
+All five share one tag per piece of work and differ only by type, so every query in the
 protocol is an equality match on two attributes. Nothing parses a built string.
 
-The asymmetry is the design: **claims clean themselves up, completions persist.** Expiry is
-the default, and survival is what costs effort.
+The asymmetry is the design: **claims clean themselves up, everything else persists.** Expiry
+is the default, and survival is what costs effort.
+
+`lane` is the one role that exists to answer a question none of the others can. A claim says
+who is working *now* and is required to vanish. A `done` row is only ever written by an agent
+that finished. Neither records that Nova touched the incident and then died — and that is
+precisely the fact the takeover needs. So `lane` is written once, the first time an agent puts
+anything on Swarm for this incident, and it is long-lived on purpose. Its `owner` is the
+provenance.
+
+### The Swarm side: one lane per agent
+
+Nothing on Swarm is appended to or edited. Every write is a new immutable chunk at a new
+address, so work in progress cannot be a growing document — it is a sequence of separate
+objects, and the whole problem is how another agent finds them without being told.
+
+Two kinds of address solve it. An ordinary blob's address *is* the hash of its bytes, so it
+cannot be guessed; you have to be handed it. A feed chunk's address is derived from **who
+wrote it and what it is about** instead:
+
+```
+address = hash( owner wallet , topic , index )
+topic   = Topic.fromString('agent-memory-mesh/' + tag)
+```
+
+The address therefore exists before the content does, and anyone holding the tag and a wallet
+address can compute it. An agent publishing work does two writes: the content as a stamped
+chunk, and a small signed feed chunk at the next index of its own lane pointing at it. One
+lane per wallet, one topic per incident:
+
+```
+topic = hash('agent-memory-mesh/incident-42')
+
+hash(atlas_addr, topic, 0) → the incident report
+hash(nova_addr,  topic, 0) → partial diagnosis        (Nova then dies)
+hash(sol_addr,   topic, 0) → the fix
+hash(sol_addr,   topic, 1) → verification note
+```
+
+Only Nova's key can write at `hash(nova_addr, topic, i)`, so a lane's owner is proof of
+authorship — nothing rests on the self-asserted `agent_id`. Everyone can read every lane,
+because the addresses are computable. And because Swarm has no expiry, a lane outlives both
+the agent that wrote it and every Arkiv row around it.
+
+### Discovery: two questions, two systems
+
+An agent arriving at an incident asks two different questions, and each goes to the system
+that can answer it. Neither is a scan.
+
+**"Is anyone alive on this?"** — Arkiv, and it is a live-or-gone answer:
+
+```
+and( eq(app, 'agent-memory-mesh'), eq(tag, 'incident-42'), eq(memory_type, 'claim') )
+→ zero rows: free to take. one row: its owner holds it, provably.
+```
+
+**"Who has ever worked this, and what did they produce?"** — Arkiv for the *who*, Swarm for
+the *what*:
+
+```
+and( eq(app, …), eq(tag, 'incident-42'), eq(memory_type, 'lane') )
+→ the owner of each row is a wallet that wrote to Swarm for this incident
+```
+
+Then, for each of those wallets only, walk its lane from index 0 until a read 404s. Two
+wallets come back, not fifty, and the cost is one transaction per agent per incident no matter
+how many lane updates follow. Probing the whole fleet's lanes instead would be both O(agents)
+and slow — each lane probe is a walk to find the latest index, at an 8-second timeout each.
+
+The roster in the incident's envelope bounds this a second time: it is the set of wallets that
+can decrypt the report at all, so it is also the largest set that could ever have worked it.
+
+### Resume rather than re-do
+
+Because a lane update is a separate object rather than an edit, a worker can publish
+intermediate findings cheaply and a successor can pick them up. That is the difference between
+the demo showing a *resume* and showing a *restart*:
+
+- Nova publishes a partial diagnosis to its lane at index 0 and writes its `lane` row.
+- Nova dies. Its claim lapses; its lane and `lane` row do not.
+- Sol queries `lane` rows, finds Nova's wallet, reads Nova's lane from index 0, and continues
+  from the root cause rather than rediscovering it.
+
+An agent that publishes nothing before dying loses its work — that is a consequence of the
+storage being immutable, not a bug to fix. Publishing intermediate state is what buys
+resumability, and it costs one chunk plus, once, one Arkiv row.
+
+### Closing the loop: verification
+
+`done` means "I believe I fixed it", not "it is fixed". The reporting agent is the one that
+detected the incident, so it is also the one positioned to check:
+
+1. Atlas's poll on `and(eq(tag, 'incident-42'), eq(memory_type, 'done'))` returns a row it did
+   not write — owned, provably, by Sol.
+2. Atlas reads Sol's lane, decrypts the verification note, and re-checks the signal that
+   opened the incident in the first place.
+3. Atlas writes a `verdict` row carrying `outcome` (`fixed` or `reopened`) as a queryable
+   attribute, with its reasoning in an encrypted chunk on its own lane.
+
+`reopened` needs no cleanup: every claim from the previous round has already lapsed, so the
+incident is simply takeable again. Nothing in the protocol is ever edited — the state of an
+incident is the set of rows that exist for its tag, and the only thing that changes state
+without anyone acting is time.
+
+This is also why the design needs no `patchEntity`. It exists and works — verified live, and
+owner-gated exactly like `extendEntity` and `deleteEntity`, rejecting a non-owner with
+`entity 0x… is owned by 0x…, not 0x…` — but a protocol in which every row is created by its
+own owner and never modified has nothing to patch. `changeOwnership` is likewise deliberately
+unused: handing a row to another agent would hand it to one that can also crash, and there is
+nothing a transfer buys that a second row does not.
 
 ### The lifecycle
 
 ```
 atlas                    nova                       sol
   │                        │                          │
+  ├─ swarm: report → lane index 0                     │
   ├─ event/incident-42 ───►│                          │
   │  (600 blocks)          │                          │
-  │                        ├─ query done/42  → none   │
-  │                        ├─ query claim/42 → none   │
+  │                        ├─ query verdict/42 → none │
+  │                        ├─ query done/42    → none │
+  │                        ├─ query claim/42   → none │
   │                        ├─ claim/42 (8 blocks) ───►│ query claim/42 → held, backs off
-  │                        │                          │
+  │                        ├─ swarm: diagnosis → lane index 0
+  │                        ├─ lane/42 (600 blocks)    │
   │                        ├─ extend every ~3 blocks  │
   │                        ✗  process dies            │
   │                           (no tx, no event)       │
   │                        ╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌ │
   │                        lease lapses at its block  │
   │                                                   ├─ query claim/42 → none
+  │                                                   ├─ query lane/42  → nova's wallet
+  │                                                   ├─ read nova's lane from index 0
   │                                                   ├─ claim/42 ─────────────►
+  │                                                   ├─ swarm: the fix → lane index 0
+  │                                                   ├─ lane/42 (600 blocks)
   │                                                   ├─ done/42 (600 blocks)
   │                                                   └─ delete its own claim
+  │◄─ query done/42 → sol's row ──────────────────────┤
+  ├─ read sol's lane, re-check the original signal    │
+  └─ verdict/42 outcome=fixed (600 blocks)            │
 ```
 
-Four things in that diagram are decisions rather than mechanics:
+Six things in that diagram are decisions rather than mechanics:
 
-- **Check `done` before `claim`.** The other order leaves a window where finished work gets
-  picked up and redone.
+- **Check in the order `verdict`, `done`, `claim`.** Each is cheaper to honour than to undo:
+  a closed incident should not be reopened by a worker, and finished work should not be
+  redone. The reverse order leaves a window for both.
+- **Write the Swarm chunk before the `lane` row.** Same rule as `src/memory.mjs`: a row that
+  points at content which failed to upload is worse than no row at all.
+- **The `lane` row is written once, not per update.** It records that this wallet has content
+  for this incident; how much content is a question for Swarm, not for the chain.
 - **The lease is far shorter than the work.** 8 blocks, about 16 seconds, renewed roughly
   every 3. A third of the lease means two consecutive failed renewals are survivable;
   renewing at full length makes every renewal a photo finish, and one slow RPC drops a lease
@@ -376,142 +512,28 @@ Query-then-write is not atomic and Arkiv has no compare-and-set, so two workers 
 claim the same incident: both query in the block after a lapse, both find nothing, both
 write. The window is one block plus RPC latency.
 
-This is not fixed, and the reason is worth saying plainly to a mentor: **the lease is
+This is not fixed, and the reason is worth stating plainly: **the lease is
 advisory, not exclusive** — the same guarantee etcd gives without fencing tokens. A
 deterministic tie-break (re-query, lowest `entityKey` wins, losers back off) closes genuine
 collisions in about twenty lines and no new primitive. It does not close the case of an agent
 that goes slow rather than dying, whose lease lapses while it is still working. Fixing that
 needs a resource that rejects stale writes, and there isn't one here.
 
----
+### What of this is verified
 
-## 8. Everything else that is design, not code
+| Claim                                                       | Status                                                          |
+| ----------------------------------------------------------- | --------------------------------------------------------------- |
+| Per-agent lanes on one topic, written by separate wallets    | verified — nova and sol each wrote their own lane, same topic   |
+| A third party reads a lane from wallet address + topic alone | verified — read back with no key, index reported as `…0001`     |
+| Lane history is recoverable after later updates exist        | verified — index 0 read back after index 1 was written          |
+| An unwritten lane is a clean signal, not an error            | verified — `404 Not Found`, distinguishable from a failure      |
+| Content chunks stamped with our own batch                    | verified — `/chunks` accepts a signed envelope, 25/25 uploads   |
+| Feed chunks stamped with our own batch                        | verified — the stamp must cover the single-owner-chunk address, `keccak(keccak(topic‖index)‖owner)`; stamping the payload's returns `400 chunk write error` |
+| The batch, not the gateway, pays for lane writes             | verified — a foreign signing key on the same feed write is rejected `400 chunk write error` |
 
-Everything below is unbuilt. It is written down so mentors can push back on the shape before
-any of it costs a day.
-
-**One decryption key is the load-bearing simplification.** Today the server holds a single
-`MEMORY_ENC_KEY` and both agents go through it (`src/swarm.mjs:17-23`). The pitch already
-concedes this out loud. But it means the mesh is not actually trustless between agents: Nova
-can read Atlas's content because the same process decrypts both. Two ways out:
-
-ACT is what this wants to be. Bee ships access control natively: `POST /grantee` creates a
-grantee list, `PATCH /grantee/{address}` adds and removes grantees, and transfers carry
-`swarm-act` and `swarm-act-history-address` (`Swarm.yaml:31-170, 186-187`). Atlas publishes
-under its own key and grants Nova and Sol; revocation is a list update, not a key rotation.
-That is the version where "content addressed, publisher controlled" is true rather than
-aspirational, and it is the spine of the incident workflow in §7.
-
-**Decision 1 — an agent's chain identity is its Swarm identity. Settled.** ACT-style access
-control is ECDH over secp256k1, and the per-agent Arkiv wallets are secp256k1 keys. So an
-agent has one identity: the key that signs its entities is the key content is encrypted to.
-`agent_id`, `owner`, and "who can read this" collapse into a single fact. The honest caveat
-is that using one key for both signing and key agreement breaks key separation as a
-principle; Swarm's own node identity does the same, so it is normal practice rather than
-novel risk, but a cryptographer will name it.
-
-**Decision 2 — a Bee node is not required. Verified.** Two separate things were conflated:
-Bee's `/grantee` *endpoint*, and access control itself. The endpoint is a convenience that
-performs the crypto server-side. Doing the crypto ourselves needs no node at all, and both
-halves are now proven: stamped chunks upload and download through the public gateway (§4),
-and ECDH grant-forward works between the existing agent keys using nothing but `node:crypto`:
-
-```
-ECDH agrees both directions:        true
-nova recovers the content key:      true
-sol cannot decrypt (not a grantee): correct
-new dependencies required:          none
-```
-
-The publisher derives a shared secret per grantee, wraps the content key with it, and writes
-a small manifest of `{grantee → wrapped key}` as one more stamped chunk. A grantee derives
-the same secret from its own key and the publisher's public key.
-
-**What that costs: interoperability, not capability.** This is not Bee's ACT. Bee's exact
-lookup-key derivation is undocumented — Swarm's own page says only that "using Diffie-Hellman
-key derivation, two additional keys will be derived from the session key: a lookup key and an
-access key decryption key" (https://docs.ethswarm.org/docs/concepts/access-control/), and
-matching it byte-for-byte would mean reversing it from `@snaha/swarm-id`'s minified bundle or
-Bee's Go source. Our own scheme means no other Swarm client can read our content even if
-granted. For a closed set of three agents that is not a loss. For "any Swarm tool can consume
-this" it would be.
-
-**The remaining option, if it appears: someone else's node.** The Swarm team is already
-providing infrastructure; a Bee endpoint with `/grantee` exposed would give real,
-interoperable ACT for no implementation work at all, since `bee-js` already has
-`createGrantees`, `getGrantees` and `patchGrantees`. Worth one question before writing any
-crypto.
-
-**Decision 3 — the grantee roster is fixed when the incident is written, and includes every
-worker.** Extending a grantee list is signed by the publisher, so if Atlas files an incident
-and dies, no reader can ever be added to it. Granting to the whole known roster up front —
-Atlas, Nova and Sol — is therefore not laziness but the thing that makes crash-takeover
-work: Sol can read and claim an incident whose author is long gone, because the grant was
-already there. A tighter "grant only to whoever claims it" rule would be more principled and
-would break the exact scenario §7 is built on.
-
-The consequence to state plainly: a fourth agent joining later cannot read incidents filed
-before it existed. The mesh is open to new writers, closed to new readers of old content.
-
-**Decision 4 — the return path is point-to-point.** The working agent grants only Atlas on
-the blob it writes, because Atlas is the one agent assumed to be up: it is the monitor, and
-under §7's merge it is also the verifier. So the grant graph is deliberately asymmetric —
-fan-out to the roster on the way in, point-to-point on the way back. The cost is that Atlas
-is load-bearing at both ends, which is where this design is most exposed: the agents modelled
-as mortal are the workers, but the agent whose death actually breaks the loop is the monitor.
-
-**Postage is solved, and is now a clock.** The drive credential means we sign our own stamps
-against our own batch (§4) — "we pay for our own storage" is no longer future work. What
-replaced it is an expiry date: the batch runs out around 2026-09-16, and topping it up is an
-on-chain action against the batch, not something the gateway will do for us.
-
-**Claims as feeds rather than as new entities.** Right now every claim is a fresh Arkiv
-entity with a fresh Swarm blob. A Swarm feed gives "static addresses for your mutable
-content", addressable by owner address plus topic id
-(`GET /feeds/{owner}/{topic}`, `Swarm.yaml:1086`;
-https://docs.ethswarm.org/docs/develop/tools-and-features/feeds/). A task could then have one
-stable address whose latest update is its current state, with Arkiv holding only the
-expiring lease over it. This is cleaner, and it is also a larger change than it sounds —
-feed updates need chunk signing, and the docs are explicit that doing it by hand "can involve
-a little data juggling and crypto magic."
-
-**The server still holds every agent's key.** Per-agent signers fixed `owner`, but not who
-is allowed to ask. `agentId` is a plain field in the request body, so anything that can reach
-`POST /api/memory` can write as Nova by typing "nova" — the server checks that a signer
-exists, never that the caller is entitled to it. The honest description today is a trusted
-server with three identities, not three independent agents.
-
-Closing it means the key moves to the agent: each agent process builds its own wallet client
-and calls `createEntity` directly, leaving the server as a read and broadcast surface only.
-That is the version where "the only thing connecting them is the public index" is literally
-true, and it costs the demo its single point of observation — worth weighing before the
-recording.
-
-**Scoping reads by owner.** `app` is self-asserted exactly like `agent_id` was: anything can
-write the constant and appear in the index. Now that the agent addresses are known and fixed,
-reads can be scoped to that set, and `app` drops back to being a convenience rather than a
-boundary.
-
----
-
-## 9. What to ask mentors
-
-1. **The batch expires around 2026-09-16.** Does it top up, or do we need a second drive?
-   Every other Swarm question is downstream of this one.
-2. ACT is settled as our own ECDH scheme over the agents' chain keys, no Bee node (§8).
-   The one thing that would change that: does the Swarm team have a Bee endpoint with
-   `/grantee` exposed? That would give real, interoperable ACT for no implementation work.
-3. Now that each agent signs for itself, no agent can release or renew another's claim —
-   the engine gates both on ownership. Is "lapsing is the only way abandoned work frees up"
-   the strongest version of the argument, or does a mentor read it as a missing feature?
-4. The advisory-lease race (§7): present it as a stated limitation with a known fix, or
-   spend the twenty lines on the tie-break so the question never comes up?
-5. Feeds for mutable task state: worth the signing complexity inside the remaining time, or
-   is "one entity per state change, expiring" the honest primitive to show?
-6. For the Arkiv feedback report — the four findings in `feedback.md` all reproduce. The
-   Swarm side now has one of the same shape: `POST /bytes` returns 201 for a valid batch id,
-   an invalid one, and none at all, so a caller cannot tell whether their own postage was
-   spent. Worth filing?
+Every mechanism §7 depends on is therefore verified against the live gateway with our own
+postage. What is not built is the protocol on top: nothing yet renews a lease, writes a `lane`
+row, takes over abandoned work, or issues a verdict.
 
 ---
 
@@ -523,7 +545,8 @@ boundary.
 | A claim lapses with nothing watching      | `node --env-file=.env scripts/watch-claim.mjs nova`                |
 | All four Arkiv findings                   | `npm run feedback:repro` (exit 0 = reproduced)                     |
 | Gateway ignores the postage header        | the three`POST /bytes` calls in §4                                |
-| A locally stamped chunk uploads           | the`Stamper` / `uploadChunk` sequence in §4                      |
+| Our own batch is the one being spent      | the wrong-key and fake-batch rejections in §4                        |
+| A locally stamped chunk uploads           | `node --env-file=.env -e "import('./src/swarm.mjs').then(m=>m.uploadMemory({note:'probe'}).then(console.log))"` |
 | Each agent signs as itself                | the three addresses in §7, on any block explorer for Tiramisu       |
 | SDK behaviours                            | the cited paths under`node_modules/@arkiv-network/sdk/src/`        |
 | Bee endpoint contracts                    | `openapi/Swarm.yaml` in `ethersphere/bee`, line numbers as cited |
