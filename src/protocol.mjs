@@ -8,7 +8,7 @@ import { writeToLane, readLane, nextFreeLaneIndex } from './lane.mjs'
 
 const CLAIM_LEASE_BLOCKS = 12 // long enough to fit a two-block settle window ahead of the first
                                // renewal at ~1/3 lease; see spec's B7 resolution
-const LONG_LIVED_BLOCKS = 600 // matches event/lane/done/verdict TTL elsewhere in the protocol
+export const LONG_LIVED_BLOCKS = 600 // matches event/lane/done/verdict TTL elsewhere in the protocol
 const MAX_CLAIM_ATTEMPTS = 10 // bounds gas spend on repeated tie-break losses, not stack depth
 const VERIFY_POLL_MAX_ATTEMPTS = 30 // ~60s at the 2s poll interval below
 
@@ -103,6 +103,7 @@ export async function renewClaim(ctx, agentId, entityKey, leaseBlocks = CLAIM_LE
   while (shouldContinue()) {
     const start = await currentBlock(pub)
     await waitForBlock(pub, start + BigInt(renewEveryBlocks))
+    if (!shouldContinue()) break
     try {
       await extendMemory(signer.wallet, { entityKey, ttlBlocks: leaseBlocks })
     } catch (e) {

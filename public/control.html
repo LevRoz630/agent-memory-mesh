@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Hydra · Control Room</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root { color-scheme: light dark; --swarm: #e67e22; --arkiv: #16a085; --ok: #2ecc71; --bad: #e74c3c; --muted: #888; }
+  body { font-family: -apple-system, system-ui, sans-serif; max-width: 1100px; margin: 2rem auto; padding: 0 1rem; line-height: 1.4; }
+  header { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; flex-wrap: wrap; }
+  h1 { font-size: 1.4rem; margin: 0; }
+  #head { font-size: 0.85rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .sub { color: var(--muted); font-size: 0.9rem; margin-bottom: 1rem; }
+  button { font: inherit; font-weight: 600; padding: 0.45rem 1rem; border-radius: 6px; border: 1px solid #8886; cursor: pointer; }
+  button:disabled { opacity: 0.4; cursor: default; }
+  .dcs { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1rem; margin: 1rem 0; }
+  .dc { border: 1px solid #8884; border-radius: 8px; padding: 1rem; }
+  .dc.down { opacity: 0.45; }
+  .dc h2 { font-size: 1rem; margin: 0 0 0.5rem; }
+  .rack { display: flex; gap: 4px; margin: 0.5rem 0; }
+  .rack span { width: 18px; height: 18px; border-radius: 3px; background: var(--ok); }
+  .rack span.failed { background: var(--bad); }
+  .dc.down .rack span { background: var(--muted); }
+  .agent { font-size: 0.9rem; margin-bottom: 0.6rem; }
+  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 0.35rem; background: var(--muted); }
+  .dot.live { background: var(--ok); }
+  .dot.busy { background: var(--swarm); }
+  .dot.dead { background: var(--bad); }
+  fieldset { border: 1px solid #8884; border-radius: 8px; padding: 1rem; margin-bottom: 1.2rem; }
+  legend { font-weight: 600; padding: 0 0.4rem; }
+  .tag { font-size: 0.65rem; font-weight: 700; padding: 0.1rem 0.4rem; border-radius: 4px; color: #fff; }
+  .tag.swarm { background: var(--swarm); }
+  .tag.arkiv { background: var(--arkiv); }
+  #timeline { list-style: none; padding: 0; margin: 0; font-size: 0.9rem; }
+  #timeline li { padding: 0.3rem 0; border-bottom: 1px dashed #8883; }
+  #timeline time { color: var(--muted); font-variant-numeric: tabular-nums; margin-right: 0.5rem; }
+  .mono { font-family: ui-monospace, monospace; font-size: 0.8em; word-break: break-all; }
+  #phase { word-break: normal; overflow-wrap: anywhere; }
+  .denied { color: var(--bad); font-weight: 600; }
+  pre { background: #8881; padding: 0.6rem; border-radius: 6px; overflow-x: auto; font-size: 0.8rem; white-space: pre-wrap; word-break: break-all; }
+  a { color: inherit; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Hydra · Control Room</h1>
+  <div id="head">Tiramisu block: —</div>
+</header>
+<div class="sub">Incident coordination on Arkiv &middot; incident reports encrypted on Swarm</div>
+
+<button id="startBtn">Simulate rack failure in DC-1</button>
+<span id="phase" class="mono"></span>
+
+<div class="dcs" id="dcs"></div>
+
+<fieldset>
+  <legend>Incident timeline <span class="tag arkiv">ARKIV</span></legend>
+  <ul id="timeline"></ul>
+</fieldset>
+
+<fieldset>
+  <legend>Incident report <span class="tag swarm">SWARM</span></legend>
+  <div id="reportRef" class="mono">No incident filed yet.</div>
+  <div style="margin-top: 0.6rem">
+    <button id="openSol" disabled>Open as Sol (on the roster)</button>
+    <button id="openOutsider" disabled>Open as an outsider</button>
+  </div>
+  <div id="reportOut"></div>
+</fieldset>
+
+<script>
+const $ = (id) => document.getElementById(id)
+const EXPLORER = 'https://tiramisu.explorer.arkiv.network'
+const SWARM_GATEWAY = 'https://api.gateway.ethswarm.org'
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
+const url = (s) => esc(encodeURIComponent(String(s ?? '')))
+const AGENTS = ['atlas', 'nova', 'sol']
+const FAILED_SLOT = 4
+
+let state = null
+
+function dotClass(status) {
+  if (status === 'dead' || status === 'error') return 'dead'
+  if (status === 'working' || status === 'claiming') return 'busy'
+  if (status === 'idle') return ''
+  return 'live'
+}
+
+function render() {
+  if (!state) return
+  $('phase').textContent = state.tag ? ` ${state.tag} · ${state.phase}` : ''
+
+  $('dcs').innerHTML = AGENTS.map((id) => {
+    const a = state.agents[id]
+    const rackFailed = id === 'atlas' && state.phase === 'running'
+    const slots = Array.from({ length: 8 }, (_, i) => `<span class="${rackFailed && i === FAILED_SLOT ? 'failed' : ''}"></span>`).join('')
+    const canKill = a.alive && state.phase === 'running'
+    return `<div class="dc${a.alive ? '' : ' down'}">
+      <h2>${esc(a.dc)}</h2>
+      <div class="rack">${slots}</div>
+      <div class="agent"><span class="dot ${dotClass(a.status)}"></span><b>${esc(id)}</b> · ${esc(a.status)}</div>
+      <button data-kill="${esc(id)}" ${canKill ? '' : 'disabled'}>Cut power</button>
+    </div>`
+  }).join('')
+
+  $('timeline').innerHTML = state.timeline.map((e) =>
+    `<li><time>${esc(new Date(e.at).toLocaleTimeString())}</time><b>${esc(e.agentId)}</b> ${esc(e.text)}</li>`
+  ).join('')
+
+  if (state.report) {
+    $('reportRef').innerHTML =
+      `Swarm ref <a target="_blank" rel="noopener" href="${SWARM_GATEWAY}/chunks/${url(state.report.swarmRef)}">${esc(state.report.swarmRef)}</a><br>` +
+      `Arkiv entity <a target="_blank" rel="noopener" href="${EXPLORER}/entity/${url(state.report.entityKey)}">${esc(state.report.entityKey)}</a>`
+    $('openSol').disabled = false
+    $('openOutsider').disabled = false
+  } else {
+    $('reportRef').textContent = 'No incident filed yet.'
+    $('openSol').disabled = true
+    $('openOutsider').disabled = true
+  }
+}
+
+function getStoredPassword() {
+  try { return sessionStorage.getItem('demoPassword') || '' } catch { return '' }
+}
+
+function setStoredPassword(pw) {
+  try { sessionStorage.setItem('demoPassword', pw) } catch {}
+}
+
+function clearStoredPassword() {
+  try { sessionStorage.removeItem('demoPassword') } catch {}
+}
+
+async function post(path) {
+  const attempt = async () => {
+    const res = await fetch(path, { method: 'POST', headers: { 'x-demo-password': getStoredPassword() } })
+    const data = await res.json()
+    return { res, data }
+  }
+  let { res, data } = await attempt()
+  if (res.status === 401) {
+    const pw = prompt('Demo password:')
+    if (pw) {
+      setStoredPassword(pw)
+      ;({ res, data } = await attempt())
+    }
+  }
+  if (!res.ok) {
+    if (res.status === 401) clearStoredPassword()
+    throw new Error(data.error || res.statusText)
+  }
+  state = data.state
+  render()
+}
+
+$('startBtn').onclick = async () => {
+  $('startBtn').disabled = true
+  $('reportOut').textContent = ''
+  try {
+    await post('/api/demo/start')
+  } catch (e) {
+    alert(`start failed: ${e.message}`)
+  } finally {
+    $('startBtn').disabled = false
+  }
+}
+
+$('dcs').onclick = async (ev) => {
+  const id = ev.target.dataset?.kill
+  if (!id) return
+  try {
+    await post(`/api/demo/kill/${encodeURIComponent(id)}`)
+  } catch (e) {
+    alert(`cut power failed: ${e.message}`)
+  }
+}
+
+async function openReport(as) {
+  $('reportOut').textContent = 'downloading from Swarm…'
+  try {
+    const res = await fetch(`/api/demo/report?as=${encodeURIComponent(as)}`)
+    const data = await res.json()
+    if (!res.ok) throw new Error(data.error || res.statusText)
+    if (data.ok) {
+      $('reportOut').innerHTML = `<p>Decrypted with <b>${esc(data.as)}</b>'s key (${esc(data.bytes)} bytes from Swarm):</p><pre>${esc(JSON.stringify(data.report, null, 2))}</pre>`
+    } else {
+      $('reportOut').innerHTML = `<p class="denied">${esc(data.error)}</p><p>What the gateway or anyone else sees (${esc(data.bytes)} bytes):</p><pre>${esc(data.ciphertextPreview)}…</pre>`
+    }
+  } catch (e) {
+    $('reportOut').textContent = `FAILED: ${e.message}`
+  }
+}
+$('openSol').onclick = () => openReport('sol')
+$('openOutsider').onclick = () => openReport('outsider')
+
+async function loadState() {
+  try {
+    state = await (await fetch('/api/demo/state')).json()
+    render()
+  } catch {}
+}
+
+async function pollHead() {
+  try {
+    const res = await fetch('/api/head')
+    if (!res.ok) throw new Error(`/api/head → ${res.status}`)
+    const { head } = await res.json()
+    $('head').textContent = `Tiramisu block: ${head}`
+  } catch (e) {
+    $('head').textContent = `Tiramisu block: unreachable (${e.message})`
+  }
+}
+
+function connect() {
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws'
+  const ws = new WebSocket(`${proto}://${location.host}/live`)
+  ws.onmessage = (ev) => {
+    const msg = JSON.parse(ev.data)
+    if (msg.type !== 'demo') return
+    state = msg.state
+    render()
+  }
+  ws.onclose = () => setTimeout(() => { loadState(); connect() }, 2000)
+}
+
+loadState()
+pollHead()
+setInterval(pollHead, 2000)
+connect()
+</script>
+</body>
+</html>
