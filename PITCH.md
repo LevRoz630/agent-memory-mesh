@@ -22,8 +22,8 @@ Judging weights, and where each one is earned:
   Two browser windows stacked on the right, page zoomed to roughly 125%.
 - Notifications off, bookmarks bar hidden, clean shell prompt.
 - Devtools open in the right-hand browser window on the Network tab, filtered to WS.
-- Second terminal tab ready with `npm run demo:expiry`. Start it before clip 2 rolls, because
-  clip 2 comes back to it after the lease has already lapsed.
+- Second terminal tab ready with `node --env-file=.env scripts/demo-expiry.mjs`. Start it before
+  clip 2 rolls, because clip 2 comes back to it after the lease has already lapsed.
 - Record clip 2 three times and keep the best one. The agent picks its own wording each run.
 - Cut only between clips. A splice inside clip 2, between the write and the panel updating, is
   the one edit that would cost us the whole argument.
@@ -55,8 +55,8 @@ importance over seven, on typed attributes.  So you can filter data as in Web2 d
 Show: terminal left, mission-control page right, both in frame the entire time. Never
 full-screen the terminal. The right half moving on its own is the point of this clip.
 
-187 spoken words, about 77 seconds, so roughly 19 seconds of the window is commands running.
-Five beats, one continuous take.
+161 spoken words, about 67 seconds, so roughly 29 seconds of the window is commands running.
+Four beats, one continuous take.
 
 Beat 1. Run `npm run agent -- atlas "remember that I prefer dark mode and 24-hour time"`.
 
@@ -66,26 +66,18 @@ Beat 1. Run `npm run agent -- atlas "remember that I prefer dark mode and 24-hou
 > one went encrypted to Swarm first, and the Arkiv entity holds the pointer plus agent_id, memory_type, tag and importance.
 
 
-Beat 2. Run `npm run agent -- nova "what do you know about my display preferences?"`.
+Beat 2. 
 
-> Now Nova, a separate process that has never spoken to Atlas. It checked its own memories,
-> found nothing, queried Atlas's, and answered correctly. That's the compound query.
+> Now as we can see the second agent, Nova, a separate process that has never spoken to Atlas. It checked its own memories,
+> found nothing, queried Atlas's, and answered correctly. It uses the compound query.
 
-Beat 3. Write an unrelated entity from the second wallet.
+Beat 3. Now we write another memory that has a shorter expiry to check that it works.
 
-> A write from a different wallet arrives, and our filter drops it before the panel moves.
+> This one I started ninety seconds ago, with an eight block lease. Same query before: one row. Same query after: zero. Nothing deleted it, no cleanup job ran. The row stopped existing because its lease ran out.
 
-Beat 4. Bring up the second terminal tab, where `demo:expiry` has already passed its boundary.
+Beat 4. Said over the expiry output, still on screen.
 
-> This one I started ninety seconds ago, with an eight block lease. Same query before: one
-> row. Same query after: zero. Nothing deleted it, no cleanup job ran. The row stopped
-> existing because its lease ran out.
-
-Overlay: `8 block lease · written at 323552 · expired at 323562 · deleteEntity calls: 0`.
-
-Beat 5. Said over the expiry output, still on screen.
-
-> Writes, live reads, a compound query and expiry, all against Tiramisu, nothing mocked.
+> Nothing here is mocked, all is live onchain and all writes can be traced through the links.
 
 ## Clip 3, 2:12 to 2:40, who it's for
 
@@ -121,11 +113,11 @@ Say, 54 words:
 | Clip            | Window     | Spoken words | Talking time |
 | --------------- | ---------- | ------------ | ------------ |
 | 1, why Arkiv    | 0:00–0:36 | 89           | 0:37         |
-| 2, demo         | 0:36–2:12 | 177          | 1:13         |
+| 2, demo         | 0:36–2:12 | 161          | 1:07         |
 | 3, who it's for | 2:12–2:40 | 66           | 0:27         |
 | 4, feedback     | 2:40–3:00 | 54           | 0:22         |
-| Total           | 3:00       | 386          | 2:39         |
+| Total           | 3:00       | 370          | 2:33         |
 
-386 words at 145 a minute is 2:39 of talking. The other 21 seconds are commands executing in
-clip 2. If a take runs short, the spare seconds belong to beat 3 and to holding on the expiry
-output a beat longer.
+370 words at 145 a minute is 2:33 of talking. The other 27 seconds are commands executing in
+clip 2. If a take runs short, the spare seconds belong to holding on the expiry output a beat
+longer.
