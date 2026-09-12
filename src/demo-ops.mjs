@@ -1,10 +1,8 @@
 import { writeMemory } from './memory.mjs'
 import { writeToLane } from './lane.mjs'
 import { queryByTagAndType } from './arkiv.mjs'
-import { tryClaim, renewClaim, takeOver, finish as finishWork } from './protocol.mjs'
+import { tryClaim, renewClaim, takeOver, finish as finishWork, LONG_LIVED_BLOCKS } from './protocol.mjs'
 import { WORK_STEPS } from './demo.mjs'
-
-const LONG_LIVED_BLOCKS = 600
 
 function signerFor(ctx, agentId) {
   const signer = ctx.signers.get(agentId)
