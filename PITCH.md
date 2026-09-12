@@ -1,15 +1,16 @@
 # Agent Memory Mesh: the 3-minute video
 
 The shooting script. One video, three minutes, four unbroken clips. Everything said is
-written out below, next to what has to be on screen while it's said. Evidence a judge might
-want to check (block heights, transaction hashes, the `deleteEntity` count) lives in
-`README.md` and `feedback.md`, so the video only has to be convincing, not exhaustive.
+written out below, next to what has to be on screen while it's said. Evidence a judge might want to check (block heights, transaction hashes, the `deleteEntity`
+count) lives in `README.md`; the concurrent-write finding in Clip 4 lives in `feedback.md`.
+The video only has to be convincing, not exhaustive.
 
-The scenario: Atlas is a monitoring agent on one framework, Nova is a remediation agent on a
-different one. They share no database, no session store, no API key. Atlas detects an
-incident and files it. Nova claims it and works it. If Nova's own process dies mid-fix, the
-claim has to expire on its own, without a cron job or a human noticing — because the outage
-that killed Nova could just as easily have killed whatever was supposed to clean up after it.
+The scenario: Atlas is a monitoring agent, Nova is a remediation agent. Neither ever calls
+the other directly — the only thing connecting them is Arkiv's public index and Swarm's
+content store. Atlas detects an incident and files it. Nova claims it and works it. If
+Nova's own process dies mid-fix, the claim has to expire on its own, without a cron job or a
+human noticing — because the outage that killed Nova could just as easily have killed
+whatever was supposed to clean up after it.
 
 Judging weights, and where each one is earned:
 
@@ -22,8 +23,8 @@ Judging weights, and where each one is earned:
 
 ## Before recording
 
-- `npm start` running, wallet funded on Tiramisu, one memory already written so the feed
-  isn't empty on the first frame.
+- `npm start` running, wallet funded on Tiramisu. The mission-control page only renders
+  live websocket events, not backfill, so it's fine — expected, even — that it opens empty.
 - Record natively at 1920x1080. Terminal on the left at about 40% width, font 18 to 20pt.
   Two browser windows stacked on the right, page zoomed to roughly 125%.
 - Notifications off, bookmarks bar hidden, clean shell prompt.
@@ -47,7 +48,7 @@ Show: the visualisation.png
 
 Say:
 
-Two agents, two frameworks, no shared database. One detects an incident, the other claims it
+Two agents that never call each other directly. One detects an incident, the other claims it
 and fixes it. The claim has to expire on its own if the second agent crashes mid-fix, or the
 task is stuck "in progress" forever. A cron job could do that cleanup, except the same outage
 that killed the agent can take the cron job down with it — it's on the same infrastructure.
@@ -77,13 +78,13 @@ remediation, high priority, short-lived."`
 > plus agent_id, memory_type, tag and importance.
 
 Beat 2. Run `node --env-file=.env scripts/agent-chat.mjs nova "Anything flagged for
-remediation right now?"`.
+remediation right now? If so, claim it with a short lease before you start working it."`.
 
-> Nova is a separate process, a different framework — it never talks to Atlas's app at all.
-> It queried the shared index for anything tagged agent_id atlas, found the incident, and
-> claimed it — its own entry, its own short lease, saying "I've got this." The detail itself
-> came straight from Swarm by the pointer in that entry, so Nova never touched Atlas's
-> server, only the public index and the public content store.
+> Nova is a separate process — it never calls Atlas directly. It queried the shared index
+> for anything tagged agent_id atlas, found the incident, and wrote its own claim: its own
+> entry, its own short lease, saying "I've got this." Today both agents run through the same
+> demo server, which holds the one decryption key — pointing Nova at Swarm directly, with
+> its own key, is the next step, not a today claim.
 
 Beat 3. Cut to the second terminal tab, expiry output already complete.
 
@@ -95,8 +96,7 @@ Beat 3. Cut to the second terminal tab, expiry output already complete.
 Beat 4. Said over the expiry output, still on screen.
 
 > Once that claim is gone, any other agent can pick the task back up. Nothing here is
-> mocked. Every write is live and traceable through the links, and neither agent ever had to
-> trust the other's server with its own diagnostics.
+> mocked. Every write is live and traceable through the links.
 
 ## Clip 3, 2:12 to 2:40, who it's for
 
