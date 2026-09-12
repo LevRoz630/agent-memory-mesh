@@ -1,6 +1,5 @@
-// npm run demo — chains the pieces already built into one run: Atlas remembers, Nova
-// recalls (cross-agent, proving portability), a compound query, then Mission 02's expiry
-// demo. Needs `npm start` running in another terminal with the mission-control page open.
+// npm run demo — Atlas remembers, Nova recalls the same memory, a compound query, then the
+// expiry demo. Needs `npm start` running in another terminal.
 
 import { spawn } from 'node:child_process'
 import { fileURLToPath } from 'node:url'

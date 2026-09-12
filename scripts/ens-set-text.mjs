@@ -1,9 +1,5 @@
-// Sets the agent-profile text record on an already-registered ENSv2 name. Registration and
-// records are separate steps (docs.ens.domains/ensv2/tutorial-app-developers) — this is the
-// second step, run after scripts/ens-register.mjs.
-//
-// Resolver ABI verified live against Blockscout's deployed-contract API, same approach that
-// caught the wrong duration type in the registrar script.
+// Sets the agent-profile text record on a name already registered by scripts/ens-register.mjs;
+// in ENSv2 registration and records are separate steps.
 //
 //   PRIVATE_KEY=0x... node scripts/ens-set-text.mjs atlas-ethrome26 "profile text here"
 

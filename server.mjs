@@ -1,7 +1,5 @@
-// Local dev entrypoint: the shared REST app (src/app.mjs) plus a real websocket push on
-// top — this is the Mission 03 artifact. The Vercel deployment (api/index.mjs) uses the
-// same REST app without this layer, since serverless functions can't hold a persistent
-// websocket server; see src/app.mjs's header comment.
+// Local dev entrypoint: the shared REST app plus the live websocket push that the serverless
+// deployment (api/index.mjs) can't hold open.
 
 import { createServer } from 'node:http'
 import { WebSocketServer } from 'ws'
@@ -38,7 +36,6 @@ function broadcast(msg) {
   }
 }
 
-// This is the Mission 03 artifact — see watchMemories in src/arkiv.mjs for the mechanism.
 watchMemories(wsClient, pub, {
   onEvent: (e) => broadcast({ type: 'log', ...e }),
   onMemory: async ({ entityKey, owner, expiresAt, attributes }) => {

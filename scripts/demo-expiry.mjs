@@ -1,8 +1,5 @@
-// Mission 02 evidence, reproducible: write a short-lived memory, query it (present), wait
-// past its expiry block, query the SAME filter again (gone) — no deleteEntity call anywhere
-// in this file. Records requested vs. applied expiry, since createEntity's returned
-// expiresAt for a fromBlocks() duration is a lower bound resolved against whatever block
-// the tx actually lands in (they can differ).
+// Write a short-lived memory, query it (present), wait past its expiry block, query the same
+// filter again (gone). Nothing here calls deleteEntity.
 //
 //   node --env-file=.env scripts/demo-expiry.mjs
 

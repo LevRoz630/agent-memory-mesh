@@ -1,17 +1,8 @@
-// Arkiv index for Agent Memory Mesh: the agent_memory entity type. Content lives on Swarm
-// (src/swarm.mjs) — this file only ever touches the pointer + metadata.
+// Arkiv index for agent_memory entities. Content itself lives on Swarm (src/swarm.mjs); this
+// file only touches the pointer and metadata.
 //
-// Verified against @arkiv-network/sdk's shipped source, not just its docs:
-//   - watchEntityEvents' onEntityCreated carries only { entityKey, owner, expiresAt } plus
-//     block context — never attributes or payload.
-//   - ExpirationTime.fromBlocks(n) takes a plain positive integer, exact, no rounding.
-//   - createEntity's returned expiresAt is a LOWER BOUND for from*() duration helpers — the
-//     engine resolves it against whatever block the tx actually lands in, so requested and
-//     applied can differ. Record both.
-//
-// Attribute names are snake_case ONLY — the engine's charset is lowercase, digits, _, -, .
-// agentId/memoryType/swarmRef would be silently accepted by the SDK's client-side validator
-// and rejected on-chain.
+// Attribute names must be snake_case: the SDK's client-side validator accepts agentId, the
+// engine's charset rejects it on-chain.
 
 import { createPublicClient, createWalletClient, ExpirationTime, str, u64, stringToPayload } from '@arkiv-network/sdk'
 import { tiramisu } from '@arkiv-network/sdk/chains'
@@ -29,24 +20,19 @@ const ATTR = {
 }
 
 export function makeClients({ privateKey, httpUrl, wsUrl }) {
-  // nonceManager matters here: without it, concurrent createEntity calls from the same
-  // wallet race on the same nonce and only one of them lands (confirmed live, 1/6 vs 6/6).
+  // Without nonceManager, concurrent createEntity calls from this wallet race on the same
+  // nonce and only one lands (1/6 vs 6/6 live).
   const account = privateKeyToAccount(privateKey, { nonceManager })
   const pub = createPublicClient({ chain: tiramisu, transport: http(httpUrl, { cacheTime: 0 }) })
   const wallet = createWalletClient({ account, chain: tiramisu, transport: http(httpUrl, { cacheTime: 0 }) })
-  // Separate websocket client for watchEntityEvents — sharing the HTTP client's transport
+  // watchEntityEvents needs its own websocket-transport client; the HTTP client's transport
   // would not open a real subscription.
   const wsClient = createPublicClient({ chain: tiramisu, transport: webSocket(wsUrl) })
   return { account, pub, wallet, wsClient }
 }
 
-/**
- * Writes one agent_memory entity. `ttlBlocks` is required and explicit — this schema has no
- * "just use the default" case, since expiry IS the mechanic (Mission 02).
- *
- * Returns both the requested lifetime (in blocks) and the applied expiry (the real block
- * height from the receipt) — they can differ, per ExpirationTime.fromBlocks' own docs.
- */
+// The applied expiry is resolved against whatever block the tx lands in, so it can sit past
+// what ttlBlocks asked for. Both are returned.
 export async function createMemory(wallet, { agentId, memoryType, tag, importance, swarmRef, ttlBlocks }) {
   const { entityKey, txHash, expiresAt } = await wallet.createEntity({
     expires: ExpirationTime.fromBlocks(ttlBlocks),
@@ -63,30 +49,20 @@ export async function createMemory(wallet, { agentId, memoryType, tag, importanc
   return { entityKey, txHash, requestedTtlBlocks: ttlBlocks, appliedExpiresAt: expiresAt }
 }
 
-/**
- * Attribute values come back from getEntity/select as typed wrapper objects,
- * { type: 'str', value: 'atlas' } / { type: 'u64', value: 7n } —
- * confirmed empirically, asymmetric with the write path (which takes str()/u64()
- * constructors going in but does not hand back the same shape coming out). Unwrap once
- * here rather than making every caller know this.
- */
+// Reads hand back typed wrappers ({ type: 'str', value: 'atlas' }), asymmetric with the
+// str()/u64() write path.
 export function unwrapAttributes(attrs) {
   return Object.fromEntries(Object.entries(attrs ?? {}).map(([k, v]) => [k, v?.value ?? v]))
 }
 
-// select('*') silently omits `owner` on the live Tiramisu node despite toRpcSelect building
-// { owner: true, ... } for it — confirmed empirically. An explicit field list gets it back.
+// An explicit field list rather than select('*'), which silently omits `owner` on the live
+// Tiramisu node.
 async function runQuery(pub, pred, limit) {
   const result = await pub.select({ key: true, owner: true, expiresAt: true, attributes: true }).where(pred).limit(limit).fetch()
   const entities = Array.isArray(result) ? result : (result?.entities ?? [])
   return entities.map((e) => ({ ...e, attributes: unwrapAttributes(e.attributes) }))
 }
 
-/**
- * Compound query: agent_id = X AND memory_type = Y [AND importance >= minImportance]
- * [AND tag STARTSWITH tagPrefix]. This is the query-depth demo: a compound filter across
- * attributes.
- */
 export async function queryMemories(pub, { agentId, memoryType, minImportance, tagPrefix, limit = 50 }) {
   const clauses = [eq(ATTR.agentId, str(agentId))]
   if (memoryType) clauses.push(eq(ATTR.memoryType, str(memoryType)))
@@ -96,12 +72,8 @@ export async function queryMemories(pub, { agentId, memoryType, minImportance, t
   return runQuery(pub, pred, limit)
 }
 
-/**
- * Recent memories across a fixed small set of known agents — used by the polling fallback
- * for contexts that can't hold a real websocket subscription (serverless deployments).
- * Arkiv requires at least one predicate on every query (no "match everything" spelling),
- * hence the OR across known agent ids rather than an unfiltered scan.
- */
+// Arkiv rejects a query with no predicate, so "recent" is an OR across known agent ids rather
+// than an unfiltered scan.
 export async function queryRecent(pub, { agentIds = ['atlas', 'nova'], limit = 20 } = {}) {
   const pred = agentIds.length === 1
     ? eq(ATTR.agentId, str(agentIds[0]))
@@ -109,17 +81,12 @@ export async function queryRecent(pub, { agentIds = ['atlas', 'nova'], limit = 2
   return runQuery(pub, pred, limit)
 }
 
-/**
- * The Mission 03 leg. Fires onMemory(fullEntity) only for entities this app's schema cares
- * about — every EntityCreated event is filtered by attempting the read, and a read that
- * fails (wrong type, expired between event and read, not one of ours) is silently skipped
- * rather than surfaced as an error. An irrelevant chain event must NOT reach onMemory; that
- * silence is deliberate — it's the behavior the demo is built to show.
- *
- * wsClient MUST be a webSocket()-transport client, and this call passes no fromBlock — both
- * required for a real subscription rather than HTTP polling (verified in pre-flight,
- * evidence/ws-proxy.mjs).
- */
+// An EntityCreated event carries only { entityKey, owner, expiresAt }, so each one has to be
+// read back to tell whether it is ours; a failed read (wrong type, already expired) is skipped
+// silently rather than surfaced, so unrelated chain events never reach onMemory.
+//
+// wsClient must use a webSocket() transport and no fromBlock may be passed, or this degrades
+// to HTTP polling.
 export function watchMemories(wsClient, pub, { onMemory, onEvent, onError }) {
   return wsClient.watchEntityEvents({
     onEntityCreated: async ({ entityKey, owner, expiresAt }) => {
@@ -138,6 +105,5 @@ export function watchMemories(wsClient, pub, { onMemory, onEvent, onError }) {
       }
     },
     onError,
-    // no fromBlock — see module docstring
   })
 }

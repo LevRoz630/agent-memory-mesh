@@ -1,6 +1,5 @@
-// Vercel entrypoint. No websocket layer here — see src/app.mjs's header comment for why.
-// Clients hold the Arkiv keypair for the lifetime of the function's module scope, reused
-// across warm invocations (Vercel keeps a function instance alive between nearby requests).
+// Vercel entrypoint, no websocket layer — see src/app.mjs. The clients live in module scope so
+// warm invocations reuse them.
 
 import { createApp } from '../src/app.mjs'
 import { makeClients } from '../src/arkiv.mjs'

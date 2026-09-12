@@ -1,7 +1,7 @@
-// node scripts/agent-chat.mjs <atlas|nova> "<message>" — a real Claude session deciding
-// whether to remember/recall. Talks to the same /api/memory and /api/query endpoints the
-// browser UI uses, so a write here still shows up live on the mission-control page over
-// the existing websocket.
+// A Claude session deciding for itself whether to remember or recall, through the same
+// endpoints the browser UI uses, so its writes also show up live on the page.
+//
+//   node scripts/agent-chat.mjs <atlas|nova> "<message>"
 
 import Anthropic from '@anthropic-ai/sdk'
 import { betaTool } from '@anthropic-ai/sdk/helpers/beta/json-schema'

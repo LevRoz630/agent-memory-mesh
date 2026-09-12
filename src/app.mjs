@@ -1,8 +1,5 @@
-// The REST surface, shared between local dev (server.mjs, which adds a real websocket push
-// on top) and the Vercel deployment (api/index.mjs, which can't hold a persistent websocket
-// — Vercel's Node runtime is a function per request, no long-lived process — so it exposes
-// /api/recent for the frontend's polling fallback instead). Deploying server.mjs as-is to
-// Vercel returned FUNCTION_INVOCATION_FAILED on every route — confirmed live, not assumed.
+// Shared REST surface: server.mjs adds a websocket push on top, api/index.mjs can't (a Vercel
+// function has no long-lived process) and serves /api/recent for polling instead.
 
 import express from 'express'
 import { fileURLToPath } from 'node:url'
@@ -64,9 +61,6 @@ export function createApp({ pub, wallet }) {
     }
   })
 
-  // Polling fallback for contexts with no persistent websocket (serverless deployments).
-  // The real Mission 03 mechanism is the websocket push in server.mjs; this exists only
-  // so the publicly deployed app still shows activity without lying about how.
   app.get('/api/recent', async (_req, res) => {
     try {
       const entities = await queryRecent(pub, { limit: 20 })
@@ -87,9 +81,8 @@ export function createApp({ pub, wallet }) {
     }
   })
 
-  // Catches errors that never reach a route handler at all — malformed JSON or an oversized
-  // body both fail inside express.json() itself. Without this, Express's default error
-  // handler serves a full stack trace, including absolute server file paths, to the client.
+  // Malformed JSON and oversized bodies fail inside express.json(), before any route handler.
+  // Express's default handler would serve the stack trace, including file paths, to the client.
   app.use((err, _req, res, _next) => {
     console.error('request failed:', err)
     res.status(err.status || 400).json({ error: 'invalid request' })

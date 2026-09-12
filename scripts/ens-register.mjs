@@ -1,18 +1,8 @@
-// Register a flat top-level Sepolia name on the ENSv2 beta deployment, as an agent
-// identity. Two names needed (one per demo agent) — run twice, or loop LABELS below.
+// Registers one flat top-level Sepolia name on the ENSv2 beta deployment as an agent identity;
+// run it once per agent. Commit-reveal flow: mint MockUSDC -> approve ETHRegistrar ->
+// makeCommitment -> commit -> wait MIN_COMMITMENT_AGE (60s) -> register.
 //
-// Flow (commit-reveal, per docs.ens.domains/ensv2/tutorial-app-developers +
-// docs.ens.domains/ensv2/eth-registrar): mint MockUSDC -> approve ETHRegistrar ->
-// makeCommitment -> commit -> wait >=60s (MIN_COMMITMENT_AGE) -> register.
-//
-// UNVERIFIED BEFORE THIS RUN: exact ABI param types/order came from a doc-page summary,
-// not the raw Solidity source — expect the first call to error with a real signature
-// mismatch and adjust from that error, same as every other "verify against the live
-// chain" script in this project's pre-flight work. Budget for that inside the 60-minute
-// cap, don't treat this script as done until it has actually landed a tx.
-//
-// Needs Sepolia ETH for gas. Faucets: https://sepoliafaucet.com or Alchemy/Infura's.
-// Needs PRIVATE_KEY in the environment (a Sepolia-funded wallet), never hardcoded.
+// Needs a Sepolia-funded PRIVATE_KEY in the environment.
 //
 //   PRIVATE_KEY=0x... node scripts/ens-register.mjs atlas
 //   PRIVATE_KEY=0x... node scripts/ens-register.mjs nova
@@ -34,7 +24,6 @@ if (!pk || !isHex(pk)) {
   process.exit(1)
 }
 
-// Confirmed live 2026-09-11 from docs.ens.domains/learn/deployments#sepolia-ensv2-beta
 const ETH_REGISTRAR = '0xa88553f454b77203b0d036a05c894d555eaaa2cc'
 const MOCK_USDC = '0x768f42455a2d082e23ceef7d51e5787c82d67a39'
 const PUBLIC_RESOLVER_V2 = '0xe7b9a25607e02da8145e4eb1836ca539e53f11f7'
@@ -47,10 +36,8 @@ const ERC20_ABI = parseAbi([
   'function balanceOf(address account) view returns (uint256)',
 ])
 
-// Verified 2026-09-11 against the deployed contract's actual ABI via Blockscout
-// (eth-sepolia.blockscout.com/api/v2/smart-contracts/<address>), not a doc-page summary —
-// the earlier doc-summary version had `duration` as uint256, which is wrong (uint64) and
-// produced a different selector, hence the first run's silent "execution reverted".
+// Taken from the deployed contract's ABI, not the docs, which describe `duration` as uint256 —
+// wrong by one type, a different selector, and a silent "execution reverted".
 const ETH_REGISTRAR_ABI = parseAbi([
   'function isAvailable(string label) view returns (bool)',
   'function getRegisterPrice(string label, uint64 duration, address paymentToken) view returns (uint256 base, uint256 premium)',
@@ -59,9 +46,8 @@ const ETH_REGISTRAR_ABI = parseAbi([
   'function register(string label, address owner, bytes32 secret, address subregistry, address resolver, uint64 duration, address paymentToken, bytes32 referrer) returns (uint256 tokenId)',
 ])
 
-// Explicit RPC instead of viem's default rotation — one of those endpoints hung indefinitely on
-// a live run (no error, no response) rather than failing fast. publicnode's Sepolia
-// endpoint answered eth_getBalance in well under a second when checked directly with curl.
+// An explicit RPC rather than viem's default rotation: one endpoint in that rotation hung
+// indefinitely instead of failing fast.
 const RPC_URL = 'https://ethereum-sepolia-rpc.publicnode.com'
 
 const account = privateKeyToAccount(pk)
