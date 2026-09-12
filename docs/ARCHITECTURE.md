@@ -129,7 +129,7 @@ on error (`server.mjs:46-71`).
 
 ## 4. The Swarm leg
 
-**What the code does.** A random content key is generated for each memory; the content is encrypted with AES-256-GCM and packed as `[12-byte IV][16-byte auth tag][ciphertext]` into one blob. The content key is wrapped per roster recipient via ECIES (ECDH over secp256k1 + HKDF), using each agent's `ARKIV_PRIVATE_KEY_<AGENT>` as their decryption identity — the same key that signs their Arkiv transactions (`src/swarm.mjs:8-10`). There is no shared secret. The wrapped blob is POSTed to `${SWARM_GATEWAY}/chunks`, default `https://api.gateway.ethswarm.org`, as a stamped chunk (`src/swarm.mjs:25-33, 45-60`). Download attempts decryption with each configured agent's private key until one successfully unwraps the content key, then decrypts the content (`src/swarm.mjs:62-70`). An 8-second timeout exists because a gateway that accepts the connection and then stalls leaves a bare `fetch()` pending forever, hanging whichever route awaits it (`src/swarm.mjs:11-13`).
+**What the code does.** A random content key is generated for each memory; the content is encrypted with AES-256-GCM and packed as `[12-byte IV][16-byte auth tag][ciphertext]` into one blob. The content key is wrapped per roster recipient via ECIES (ECDH over secp256k1 + HKDF), using each agent's `ARKIV_PRIVATE_KEY_<AGENT>` as their decryption identity — the same key that signs their Arkiv transactions (`src/swarm.mjs:8-10`). There is no shared secret. The wrapped blob is POSTed to `${SWARM_GATEWAY}/chunks`, default `https://api.gateway.ethswarm.org`, as a stamped chunk (`src/swarm.mjs:165-190`). Download attempts decryption with each configured agent's private key until one successfully unwraps the content key, then decrypts the content (`src/swarm.mjs:192-197`). An 8-second timeout exists because a gateway that accepts the connection and then stalls leaves a bare `fetch()` pending forever, hanging whichever route awaits it (`src/swarm.mjs:26-28`).
 
 **Which SDK, and why not the other one.** `@ethersphere/bee-js` is a dependency and works
 server-side. `@snaha/swarm-id` — the library behind Swarm's drive UI, and the one that
@@ -215,7 +215,7 @@ drive's 23. Two limits are deliberate rather than solved:
 TTL before they reach the SDK → select the signer for `agentId`, refusing an unknown one (§7)
 → clamp the TTL if this is a `claim` (§6) → `writeMemory` →
 encrypt, stamp, upload the chunk, get its address → `createEntity` with that reference and
-the five metadata attributes beside it → return `{ entityKey, txHash, swarmRef, appliedTtlBlocks, appliedExpiresAt, requestedTtlBlocks, ttlClamped }` (`src/app.mjs:36-74`).
+the six metadata attributes beside it → return `{ entityKey, txHash, swarmRef, appliedTtlBlocks, appliedExpiresAt, requestedTtlBlocks, ttlClamped }` (`src/app.mjs:36-74`).
 
 **Read.** `GET /api/query?agentId=…` → Arkiv predicate → for each row, fetch and decrypt its
 Swarm content. A failed fetch degrades to `{ error: 'content unavailable: …' }` on that row
