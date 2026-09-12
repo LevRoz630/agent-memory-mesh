@@ -93,7 +93,7 @@ const recallTool = betaTool({
   },
 })
 
-const system = `You are ${agentId}, an AI agent on Agent Memory Mesh. ` +
+const system = `You are ${agentId}, an AI agent on Hydra. ` +
   'You have two tools: remember and recall. Use them naturally when the conversation calls for it. ' +
   'Reply with only what was stored or found, stated plainly in a sentence or two. ' +
   'No caveats, opinions, suggestions, or commentary beyond that.'

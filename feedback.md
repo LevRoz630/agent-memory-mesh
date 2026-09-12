@@ -1,4 +1,4 @@
-# Arkiv feedback — Agent Memory Mesh
+# Arkiv feedback — Hydra
 
 Environment: `@arkiv-network/sdk@0.8.1`, `viem@2.56.3`, Node v22.23.2, chain Tiramisu
 `7738577` (`0x7614d1`).

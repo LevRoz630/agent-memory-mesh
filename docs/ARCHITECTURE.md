@@ -1,4 +1,4 @@
-# Agent Memory Mesh — architecture
+# Hydra — architecture
 
 What the code in this repo does today, why each piece is there, and where the claims come
 from. Every behavioural claim below is followed by its source: a file and line in this repo,
@@ -62,7 +62,7 @@ plus one that only verdict rows carry:
 
 | Attribute       | Type    | Values                                                                                            |
 | --------------- | ------- | ------------------------------------------------------------------------------------------------- |
-| `app`         | `str` | `agent-memory-mesh` — the only value; written by every participant so the index can be selected |
+| `app`         | `str` | `hydra` — the only value; written by every participant so the index can be selected |
 | `agent_id`    | `str` | `atlas` / `nova` / `sol`                                                                    |
 | `memory_type` | `str` | `event` / `claim` / `lane` / `done` / `verdict` — the five workflow roles, nothing else (§7)         |
 | `tag`         | `str` | `incident-<id>` — the thread key every row of one piece of work shares                          |
@@ -102,7 +102,7 @@ a claim written by someone else.
 (`src/arkiv.mjs:115-122`). Two constraints shaped this:
 
 - Arkiv rejects a predicate-free query, so "show me everything recent" is a single
-  `eq(app, 'agent-memory-mesh')` (`src/arkiv.mjs:126-128`) rather than an unfiltered scan.
+  `eq(app, 'hydra')` (`src/arkiv.mjs:126-128`) rather than an unfiltered scan.
 - `select('*')` silently omits `owner` on the live node, so fields are listed explicitly
   (`src/arkiv.mjs:107-113`).
 
@@ -182,7 +182,7 @@ involved. Verified live:
 chunk address: 9bfa8221cd7b3b5916d0d299668242cd35d10a35ecc4abc13a9e1898c3c12af9
 locally signed stamp for batch: 15c48475dafee866…
 POST /chunks with envelope  → 201, reference 9bfa8221…c3c12af9
-GET  /chunks/9bfa8221…      → "agent-memory-mesh: locally stamped chunk, no bee node"
+GET  /chunks/9bfa8221…      → "hydra: locally stamped chunk, no bee node"
 ```
 
 `Stamper.fromBlank(signerKey, batchId, depth)` from `@ethersphere/bee-js` produces the
@@ -215,7 +215,7 @@ drive's 23. Two limits are deliberate rather than solved:
 TTL before they reach the SDK → select the signer for `agentId`, refusing an unknown one (§7)
 → clamp the TTL if this is a `claim` (§6) → `writeMemory` →
 encrypt, stamp, upload the chunk, get its address → `createEntity` with that reference and
-the six metadata attributes beside it → return `{ entityKey, txHash, swarmRef, appliedTtlBlocks, appliedExpiresAt, requestedTtlBlocks, ttlClamped }` (`src/app.mjs:36-74`).
+the five metadata attributes beside it → return `{ entityKey, txHash, swarmRef, appliedTtlBlocks, appliedExpiresAt, requestedTtlBlocks, ttlClamped }` (`src/app.mjs:36-74`).
 
 **Read.** `GET /api/query?agentId=…` → Arkiv predicate → for each row, fetch and decrypt its
 Swarm content. A failed fetch degrades to `{ error: 'content unavailable: …' }` on that row
@@ -347,7 +347,7 @@ wrote it and what it is about** instead:
 
 ```
 address = hash( owner wallet , topic , index )
-topic   = Topic.fromString('agent-memory-mesh/' + tag)
+topic   = Topic.fromString('hydra/' + tag)
 ```
 
 The address therefore exists before the content does, and anyone holding the tag and a wallet
@@ -356,7 +356,7 @@ chunk, and a small signed feed chunk at the next index of its own lane pointing 
 lane per wallet, one topic per incident:
 
 ```
-topic = hash('agent-memory-mesh/incident-42')
+topic = hash('hydra/incident-42')
 
 hash(atlas_addr, topic, 0) → the incident report
 hash(nova_addr,  topic, 0) → partial diagnosis        (Nova then dies)
@@ -377,7 +377,7 @@ that can answer it. Neither is a scan.
 **"Is anyone alive on this?"** — Arkiv, and it is a live-or-gone answer:
 
 ```
-and( eq(app, 'agent-memory-mesh'), eq(tag, 'incident-42'), eq(memory_type, 'claim') )
+and( eq(app, 'hydra'), eq(tag, 'incident-42'), eq(memory_type, 'claim') )
 → zero rows: free to take. one row: its owner holds it, provably.
 ```
 
