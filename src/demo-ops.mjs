@@ -3,6 +3,8 @@ import { writeToLane } from './lane.mjs'
 import { queryByTagAndType } from './arkiv.mjs'
 import { tryClaim, renewClaim, takeOver, finish as finishWork, LONG_LIVED_BLOCKS } from './protocol.mjs'
 import { WORK_STEPS } from './demo.mjs'
+import { uploadPublicFile } from './swarm.mjs'
+import { renderReceipt } from './receipt.mjs'
 
 function signerFor(ctx, agentId) {
   const signer = ctx.signers.get(agentId)
@@ -49,5 +51,7 @@ export function createDemoOps(ctx) {
     async isDone(tag) {
       return (await queryByTagAndType(ctx.pub, { tag, memoryType: 'done', limit: 1 })).length > 0
     },
+
+    publishReceipt: (state) => uploadPublicFile('receipt.svg', 'image/svg+xml', Buffer.from(renderReceipt(state), 'utf8')),
   }
 }

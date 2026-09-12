@@ -111,7 +111,8 @@ function render() {
   if (state.report) {
     $('reportRef').innerHTML =
       `Swarm ref <a data-swarm-ref="${esc(state.report.swarmRef)}" href="${esc(swarmChunkUrl(state.report.swarmRef))}">${esc(state.report.swarmRef)}</a><br>` +
-      `Arkiv entity <a target="_blank" rel="noopener" href="${EXPLORER}/entity/${url(state.report.entityKey)}">${esc(state.report.entityKey)}</a>`
+      `Arkiv entity <a target="_blank" rel="noopener" href="${EXPLORER}/entity/${url(state.report.entityKey)}">${esc(state.report.entityKey)}</a>` +
+      (state.receiptRef ? `<br>Public receipt <a target="_blank" rel="noopener" href="${esc(swarmFileUrl(state.receiptRef))}">open on Swarm ↗</a>` : '')
     $('openSol').disabled = false
     $('openOutsider').disabled = false
   } else {
