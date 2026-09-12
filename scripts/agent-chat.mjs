@@ -24,7 +24,7 @@ const rememberTool = betaTool({
   description:
     'Store something worth keeping about the user or the conversation, indexed and later retrievable. ' +
     'Pick ttlBlocks yourself: short (tens of blocks) for task-scoped context that should lapse on its own, ' +
-    'long (thousands of blocks) for durable user preferences.',
+    'up to the maximum for durable user preferences.',
   inputSchema: {
     type: 'object',
     properties: {
@@ -32,7 +32,7 @@ const rememberTool = betaTool({
       tag: { type: 'string', description: 'short topic string' },
       importance: { type: 'integer', minimum: 0, maximum: 10 },
       content: { type: 'string', description: 'what to remember, in plain text' },
-      ttlBlocks: { type: 'integer', minimum: 1 },
+      ttlBlocks: { type: 'integer', minimum: 1, maximum: 1800, description: 'at ~2s/block, 1800 is ~1 hour — there is no delete call, so entities are never removed early' },
     },
     required: ['memoryType', 'tag', 'importance', 'content', 'ttlBlocks'],
   },

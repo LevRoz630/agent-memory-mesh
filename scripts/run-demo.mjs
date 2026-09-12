@@ -21,38 +21,54 @@ function banner(title) {
   console.log(`\n${'='.repeat(60)}\n${title}\n${'='.repeat(60)}`)
 }
 
-try {
-  await fetch(`${BASE_URL}/api/head`)
-} catch {
+async function checkServer() {
+  try {
+    await fetch(`${BASE_URL}/api/head`)
+    return true
+  } catch {
+    return false
+  }
+}
+
+if (!(await checkServer())) {
   console.error(`can't reach ${BASE_URL} — start the server first: npm start`)
   process.exit(1)
 }
 
-banner('1/4 — Atlas remembers (watch the mission-control panel)')
-await run('node', [
-  join(__dirname, 'agent-chat.mjs'), 'atlas',
-  'Please remember that I prefer dark mode and 24-hour time — this is a lasting preference, not a one-off task detail.',
-])
+const runTag = `demo-${Date.now().toString().slice(-6)}`
 
-await wait(2000)
+try {
+  banner('1/4 — Atlas remembers (watch the mission-control panel)')
+  await run('node', [
+    join(__dirname, 'agent-chat.mjs'), 'atlas',
+    `Please remember that I prefer dark mode and 24-hour time as lasting preferences. ` +
+    `Tag each memory starting with "${runTag}-".`,
+  ])
 
-banner('2/4 — Nova recalls (independent session, cross-agent)')
-await run('node', [
-  join(__dirname, 'agent-chat.mjs'), 'nova',
-  'The user just asked me about their display settings — do we know anything relevant?',
-])
+  await wait(2000)
 
-await wait(1000)
+  banner('2/4 — Nova recalls (independent session, cross-agent)')
+  await run('node', [
+    join(__dirname, 'agent-chat.mjs'), 'nova',
+    'The user just asked me about their display settings — do we know anything relevant?',
+  ])
 
-banner('3/4 — compound query: agent_id=atlas AND memory_type=preference AND importance>=5')
-const params = new URLSearchParams({ agentId: 'atlas', memoryType: 'preference', minImportance: '5' })
-const rows = await (await fetch(`${BASE_URL}/api/query?${params}`)).json()
-console.log(`${rows.length} row(s):`)
-for (const r of rows) {
-  console.log(`  - [${r.attributes.tag}] ${JSON.stringify(r.content)} (importance ${r.attributes.importance}, expires block ${r.expiresAt})`)
+  await wait(1000)
+
+  banner(`3/4 — compound query: agent_id=atlas AND memory_type=preference AND tag STARTSWITH "${runTag}-"`)
+  if (!(await checkServer())) throw new Error(`lost connection to ${BASE_URL} — is npm start still running?`)
+  const params = new URLSearchParams({ agentId: 'atlas', memoryType: 'preference', tagPrefix: `${runTag}-` })
+  const rows = await (await fetch(`${BASE_URL}/api/query?${params}`)).json()
+  console.log(`${rows.length} row(s):`)
+  for (const r of rows) {
+    console.log(`  - [${r.attributes.tag}] ${JSON.stringify(r.content)} (importance ${r.attributes.importance}, expires block ${r.expiresAt})`)
+  }
+
+  banner('4/4 — Mission 02: built to expire')
+  await run('node', [join(__dirname, 'demo-expiry.mjs')])
+
+  banner('demo complete')
+} catch (e) {
+  console.error(`\ndemo stopped: ${e.message}`)
+  process.exit(1)
 }
-
-banner('4/4 — Mission 02: built to expire')
-await run('node', [join(__dirname, 'demo-expiry.mjs')])
-
-banner('demo complete')
