@@ -22,7 +22,7 @@ try {
   const headBefore = await pub.getBlockNumber()
   const result = await writeMemory(atlas.wallet, {
     agentId: 'atlas',
-    memoryType: 'task',
+    memoryType: 'event',
     tag,
     importance: 5,
     content: { note: 'working-memory scratch note that should not outlive this task' },

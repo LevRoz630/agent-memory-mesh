@@ -25,7 +25,7 @@ console.log(`wallet: ${account.address}\n`)
 
 const { entityKey, txHash, appliedExpiresAt } = await createMemory(wallet, {
   agentId: `repro04-${Date.now().toString(36)}`,
-  memoryType: 'task',
+  memoryType: 'event',
   tag: 'not-found',
   importance: 5,
   swarmRef: 'feedbackrepro',
