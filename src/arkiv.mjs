@@ -32,7 +32,7 @@ const ATTR = {
 
 // Written on every entity so the index can be selected as a whole — Arkiv rejects a
 // predicate-free query, and an OR across known agent ids does not survive a third agent.
-const APP = 'agent-memory-mesh'
+const APP = 'hydra'
 
 export const AGENT_IDS = ['atlas', 'nova', 'sol']
 
@@ -151,7 +151,7 @@ export async function queryByTagAndType(pub, { tag, memoryType, limit = 20 }) {
 //
 // wsClient must use a webSocket() transport and no fromBlock may be passed, or this degrades
 // to HTTP polling.
-export function watchMemories(wsClient, pub, { onMemory, onEvent, onError, onExpired, onExtended }) {
+export function watchMemories(wsClient, pub, { onMemory, onEvent, onError, onDeleted, onExtended }) {
   return wsClient.watchEntityEvents({
     onEntityCreated: async ({ entityKey, owner, expiresAt }) => {
       onEvent?.({ phase: 'event', entityKey, owner })
@@ -174,7 +174,7 @@ export function watchMemories(wsClient, pub, { onMemory, onEvent, onError, onExp
     },
     onEntityDeleted: ({ entityKey }) => {
       onEvent?.({ phase: 'deleted', entityKey })
-      onExpired?.({ entityKey })
+      onDeleted?.({ entityKey })
     },
     onError,
   })
