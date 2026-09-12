@@ -47,6 +47,14 @@
   #log div { padding: 0.1rem 0; border-bottom: 1px dashed #8882; }
   #log .ignored { opacity: 0.5; }
   #log .phase-resolved, #log .phase-memory { color: #16a085; }
+  .diagram { display: flex; align-items: stretch; gap: 0.7rem; }
+  .dcard { flex: 1; border: 1px solid #8884; border-top: 3px solid var(--card); border-radius: 8px; padding: 0.7rem 0.8rem; }
+  .dcard.ens { --card: var(--ens); }
+  .dcard.swarm { --card: var(--swarm); }
+  .dcard.arkiv { --card: var(--arkiv); }
+  .dtitle { font-weight: 600; margin: 0.4rem 0 0.2rem; font-size: 0.95rem; }
+  .dtext { color: #888; font-size: 0.8rem; }
+  .darrow { display: flex; align-items: center; font-size: 1.3rem; color: #8886; }
 </style>
 </head>
 <body>
@@ -56,6 +64,29 @@
   <div id="head">Tiramisu block: —</div>
 </header>
 <div class="sub">Identity: ENSv2 (Sepolia) &middot; Content: Swarm (encrypted) &middot; Index: Arkiv (Tiramisu, expiring)</div>
+
+<fieldset>
+  <legend>How this works</legend>
+  <div class="diagram">
+    <div class="dcard ens">
+      <span class="tag ens">ENS</span>
+      <div class="dtitle">Identity</div>
+      <div class="dtext">A portable name for the agent, independent of any one wallet.</div>
+    </div>
+    <div class="darrow">→</div>
+    <div class="dcard swarm">
+      <span class="tag swarm">SWARM</span>
+      <div class="dtitle">Content</div>
+      <div class="dtext">The memory itself, encrypted, off any single app's servers.</div>
+    </div>
+    <div class="darrow">→</div>
+    <div class="dcard arkiv">
+      <span class="tag arkiv">ARKIV</span>
+      <div class="dtitle">Index</div>
+      <div class="dtext">A pointer to the content plus searchable metadata, with a native lease.</div>
+    </div>
+  </div>
+</fieldset>
 
 <div id="identity">
   <span class="agent"><span class="tag ens">ENS</span> atlas-ethrome26.eth — <a class="proof" target="_blank" href="https://sepolia.etherscan.io/address/0x0Ef440b8C9Ce507Ce5f84c6b9EA7FB8b2C11a006">owner ↗</a></span>
