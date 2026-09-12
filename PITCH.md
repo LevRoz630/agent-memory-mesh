@@ -43,8 +43,8 @@ Target: ~30s
 
 ## 4. Arkiv feedback — 25%
 
-Line: "We filed 5 Arkiv findings and 4 Swarm reproductions this build, each with a
-runnable script — full report in `feedback.md`."
+Line: "We filed 4 Arkiv findings this build, each with a runnable script — full report
+in `feedback.md`."
 
 Headline finding to say out loud: the nonce-manager gap — 1/6 concurrent writes from one
 wallet landed without it, 6/6 with it. Second choice if there's time: the typed-wrapper
@@ -68,9 +68,13 @@ Target: ~15–20s
 
 - **Undocumented Arkiv finding:** `select('*')` silently omits `owner` on the live
   Tiramisu node even though the SDK correctly requests it — found and fixed today in
-  `src/arkiv.mjs`. Strong, fresh, verified-live finding. Worth adding to
-  `feedback.md`/`scripts/feedback/` before submission? That directory is a separate
-  active workstream, flagging it here instead of editing it directly.
+  `src/arkiv.mjs`. Strong, fresh, verified-live finding. Worth adding to `feedback.md`?
+  That workstream just trimmed it to 4 findings, so this is a call for whoever owns it.
+- **`scripts/feedback/05` through `09` are now orphaned** — `feedback.md` was just
+  trimmed to findings 1–4 (nonce manager, typed-wrapper, attribute validation,
+  not-found ambiguity), but the reconnect/Swarm repro scripts (05–09) still exist and
+  still run via `npm run feedback:repro`. Intentional cut, or worth restoring a line for
+  each?
 - **Physical setup:** two windows/screens vs. switching on one, for the terminal + browser
   beats.
 - **Who presents which section.**
