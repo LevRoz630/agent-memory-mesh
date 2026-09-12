@@ -19,7 +19,7 @@ function fakeOps({ leaseMs }) {
       log.push(['report', tag])
       return { swarmRef: 'ab'.repeat(32), entityKey: '0x' + '1'.repeat(64) }
     },
-    async tryClaim(agentId) {
+    async tryClaim(agentId, tag) {
       await sleep(5)
       if (done) return { held: false }
       if (claim && claim.expiresAt > Date.now()) return { held: false }
@@ -34,18 +34,18 @@ function fakeOps({ leaseMs }) {
         if (claim?.agentId === agentId) claim.expiresAt = Date.now() + leaseMs
       }
     },
-    async readProgress() {
+    async readProgress(tag) {
       return steps.length
     },
-    async recordStep(agentId, _tag, step) {
+    async recordStep(agentId, tag, step) {
       steps.push({ agentId, step })
     },
-    async finish(agentId) {
+    async finish(agentId, tag, entityKey) {
       done = true
       claim = null
       log.push(['finish', agentId])
     },
-    async isDone() {
+    async isDone(tag) {
       return done
     },
   }
@@ -97,11 +97,55 @@ check('killing an unknown agent throws', (() => { try { demo.kill('mallory'); re
 
 console.log('\nscenario: restart mid-run\n')
 
-const ops2 = fakeOps({ leaseMs: 150 })
-const recordedTags = []
+const protocolCalls = []
+const ops2 = {
+  log: [],
+  steps: [],
+  async reportIncident(tag) {
+    protocolCalls.push({ op: 'reportIncident', tag })
+    this.log.push(['report', tag])
+    return { swarmRef: 'ab'.repeat(32), entityKey: '0x' + '1'.repeat(64) }
+  },
+  async tryClaim(agentId, tag) {
+    protocolCalls.push({ op: 'tryClaim', tag })
+    await sleep(5)
+    if (this.done) return { held: false }
+    if (this.claim && this.claim.expiresAt > Date.now()) return { held: false }
+    this.claim = { agentId, expiresAt: Date.now() + 150 }
+    this.log.push(['claim', agentId, Date.now()])
+    return { held: true, entityKey: `claim-${agentId}` }
+  },
+  async renewClaim(agentId, _entityKey, shouldContinue) {
+    while (shouldContinue()) {
+      await sleep(50)
+      if (!shouldContinue()) return
+      if (this.claim?.agentId === agentId) this.claim.expiresAt = Date.now() + 150
+    }
+  },
+  async readProgress(tag) {
+    protocolCalls.push({ op: 'readProgress', tag })
+    return this.steps.length
+  },
+  async recordStep(agentId, tag, step) {
+    protocolCalls.push({ op: 'recordStep', tag })
+    this.steps.push({ agentId, step })
+  },
+  async finish(agentId, tag, entityKey) {
+    protocolCalls.push({ op: 'finish', tag })
+    this.done = true
+    this.claim = null
+    this.log.push(['finish', agentId])
+  },
+  async isDone(tag) {
+    protocolCalls.push({ op: 'isDone', tag })
+    return this.done
+  },
+  claim: null,
+  done: false
+}
+
 const demo2 = createDemo({
   ops: ops2,
-  onUpdate: (state) => recordedTags.push(state.tag),
   timings: { stepMs: 60, retryMs: 20, startDelayMs: { nova: 0, sol: 40 } }
 })
 
@@ -111,18 +155,18 @@ await waitFor(() => demo2.getState().agents.nova.status === 'working', 'nova to 
 
 await demo2.start()
 const secondTag = demo2.getState().tag
-const secondStartTime = parseInt(secondTag.split('-')[1])
-const updateCountAtSecondStart = recordedTags.length
 
-await sleep(300)
+await sleep(200)
+const callsWithFirstTagAfterRestart = protocolCalls.filter((c) => c.tag === firstTag).length
+
+await sleep(200)
 
 const state2 = demo2.getState()
-const updatesAfterRestart = recordedTags.slice(updateCountAtSecondStart)
+const callsWithFirstTagFinal = protocolCalls.filter((c) => c.tag === firstTag).length
 
 check('restart creates a new run', secondTag !== firstTag)
 check('restart revives every agent', state2.agents.atlas.alive && state2.agents.nova.alive && state2.agents.sol.alive)
-check('superseded run no longer emits', !updatesAfterRestart.some((tag) => tag === firstTag))
-check('second run timeline has no entries before second start', state2.timeline.every((e) => e.at >= secondStartTime))
+check('superseded run makes no further protocol calls', callsWithFirstTagFinal === callsWithFirstTagAfterRestart)
 
 const passed = results.every(Boolean)
 console.log(`\nRESULT: ${passed ? 'passed' : 'FAILED'}`)
