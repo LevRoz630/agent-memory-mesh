@@ -12,6 +12,10 @@
 import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto'
 
 const GATEWAY = process.env.SWARM_GATEWAY ?? 'https://api.gateway.ethswarm.org'
+// The gateway occasionally accepts a connection and then stalls instead of erroring
+// (confirmed live: a 20-way concurrent download batch once hung 301s before failing) — with
+// no client-side ceiling that hangs whichever route awaits it. Bound every call instead.
+const FETCH_TIMEOUT_MS = 8000
 
 /**
  * The memory-content encryption key. 32 bytes, hex-encoded, from the environment — never
@@ -58,6 +62,7 @@ export async function uploadMemory(content) {
     method: 'POST',
     headers: { 'Content-Type': 'application/octet-stream' },
     body: blob,
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   })
   if (!res.ok) {
     throw new Error(`Swarm upload failed: ${res.status} ${await res.text().catch(() => '')}`)
@@ -70,7 +75,7 @@ export async function uploadMemory(content) {
  * Fetches and decrypts the content a swarm_ref points at.
  */
 export async function downloadMemory(ref) {
-  const res = await fetch(`${GATEWAY}/bytes/${ref}`)
+  const res = await fetch(`${GATEWAY}/bytes/${ref}`, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) })
   if (!res.ok) {
     throw new Error(`Swarm download failed: ${res.status} for ref ${ref}`)
   }

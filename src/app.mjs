@@ -78,8 +78,13 @@ export function createApp({ pub, wallet }) {
   })
 
   app.get('/api/head', async (_req, res) => {
-    const head = await pub.getBlockNumber()
-    res.json({ head: head.toString() })
+    try {
+      const head = await pub.getBlockNumber()
+      res.json({ head: head.toString() })
+    } catch (e) {
+      console.error('head failed:', e)
+      res.status(500).json({ error: e.message })
+    }
   })
 
   // Catches errors that never reach a route handler at all — malformed JSON or an oversized

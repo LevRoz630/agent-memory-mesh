@@ -168,6 +168,21 @@ content may be garbage-collected. Confidentiality is gateway-side, not end-to-en
 gateway sees the plaintext before it encrypts. Both are fine for a demo, neither is a claim
 to make in the pitch.
 
+**Confidentiality costs Swarm's own dedup.** `encrypt()` uses a fresh random IV per call
+(correct GCM practice), so identical plaintext produces a different ciphertext, and
+therefore a different Swarm reference, every time — confirmed live: two concurrent uploads
+of the same content returned two different refs. A deterministic IV would restore
+content-addressed dedup but leak that two memories are identical, which is the worse trade
+for a memory store. This build chose confidentiality; that's a limitation worth stating
+plainly, not a claim of dedup that no longer holds once encryption is layered on.
+
+**No client-side fetch timeout.** `uploadMemory`/`downloadMemory` bound every call to 8s
+(`AbortSignal.timeout`) after live testing found the gateway can intermittently accept a
+connection and then stall for minutes — reproduced once as a 301-second hang on a batch of
+concurrent downloads, the exact fan-out pattern `/api/query` and `/api/recent` use. Without
+the timeout that stall would hang the whole HTTP response instead of failing per-entity as
+intended.
+
 ## Component 3 — ENS (identity)
 
 **What it holds.** Two names, one per agent — `atlas-ethrome26.eth` and
