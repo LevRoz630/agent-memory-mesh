@@ -7,7 +7,7 @@
 <style>
   :root {
     color-scheme: light dark;
-    --ens: #4b7bec; --swarm: #e67e22; --arkiv: #16a085;
+    --swarm: #e67e22; --arkiv: #16a085;
   }
   body { font-family: -apple-system, system-ui, sans-serif; max-width: 1100px; margin: 2rem auto; padding: 0 1rem; line-height: 1.4; }
   header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 0.2rem; }
@@ -17,7 +17,6 @@
   fieldset { border: 1px solid #8884; border-radius: 8px; padding: 1rem; margin-bottom: 1.2rem; }
   legend { font-weight: 600; padding: 0 0.4rem; display: flex; align-items: center; gap: 0.4rem; }
   .tag { font-size: 0.65rem; font-weight: 700; letter-spacing: 0.03em; padding: 0.1rem 0.4rem; border-radius: 4px; color: #fff; }
-  .tag.ens { background: var(--ens); }
   .tag.swarm { background: var(--swarm); }
   .tag.arkiv { background: var(--arkiv); }
   label { display: block; margin: 0.5rem 0 0.2rem; font-size: 0.85rem; }
@@ -38,8 +37,6 @@
   code, .mono { font-size: 0.8em; font-family: ui-monospace, monospace; }
   a.proof { text-decoration: none; margin-right: 0.5rem; }
   a.proof:hover { text-decoration: underline; }
-  #identity { display: flex; gap: 1.5rem; font-size: 0.85rem; margin-bottom: 1.2rem; }
-  #identity .agent { display: flex; align-items: center; gap: 0.4rem; }
   #log { height: 160px; overflow-y: auto; font-size: 0.78rem; font-family: ui-monospace, monospace; background: #8881; border-radius: 6px; padding: 0.5rem; }
   #log div { padding: 0.1rem 0; border-bottom: 1px dashed #8882; }
   #log .ignored { opacity: 0.5; }
@@ -52,13 +49,7 @@
   <h1>Agent Memory Mesh</h1>
   <div id="head">Tiramisu block: —</div>
 </header>
-<div class="sub">Identity: ENSv2 (Sepolia) &middot; Content: Swarm (encrypted) &middot; Index: Arkiv (Tiramisu, expiring)</div>
-
-
-<div id="identity">
-  <span class="agent"><span class="tag ens">ENS</span> atlas-ethrome26.eth — <a class="proof" target="_blank" href="https://sepolia.etherscan.io/address/0x0Ef440b8C9Ce507Ce5f84c6b9EA7FB8b2C11a006">owner ↗</a></span>
-  <span class="agent"><span class="tag ens">ENS</span> nova-ethrome26.eth — <a class="proof" target="_blank" href="https://sepolia.etherscan.io/address/0x0Ef440b8C9Ce507Ce5f84c6b9EA7FB8b2C11a006">owner ↗</a></span>
-</div>
+<div class="sub">Content: Swarm (encrypted) &middot; Index: Arkiv (Tiramisu, expiring)</div>
 
 <div class="cols">
   <fieldset>
@@ -67,8 +58,8 @@
       <div>
         <label>Agent</label>
         <select id="agentId">
-          <option value="atlas">atlas (atlas-ethrome26.eth)</option>
-          <option value="nova">nova (nova-ethrome26.eth)</option>
+          <option value="atlas">atlas</option>
+          <option value="nova">nova</option>
         </select>
       </div>
       <div>

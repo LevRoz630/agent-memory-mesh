@@ -4,10 +4,11 @@
   "private": true,
   "type": "module",
   "license": "MIT",
-  "description": "Agent memory as identity (ENSv2) + content (Swarm) + expiring index (Arkiv) — ETHRome 2026",
+  "description": "Agent memory as content (Swarm) + expiring index (Arkiv) — ETHRome 2026",
   "scripts": {
     "start": "node --env-file=.env server.mjs",
-    "demo": "node --env-file=.env scripts/run-demo.mjs"
+    "demo": "node --env-file=.env scripts/run-demo.mjs",
+    "feedback:repro": "node --env-file=.env scripts/feedback/run-all.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.125.0",

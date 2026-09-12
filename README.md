@@ -1,12 +1,9 @@
 # Agent Memory Mesh
 
-ETHRome 2026 submission, built for the Arkiv, Swarm, and ENS bounties.
+ETHRome 2026 submission, built for the Arkiv and Swarm bounties.
 
-An AI agent's memory, split across three systems instead of stuffed into one database:
+An AI agent's memory, split across two systems instead of stuffed into one database:
 
-- Identity is an ENSv2 name on Sepolia, the thing other systems resolve to find the agent.
-  Registered as flat top-level names (`atlas-ethrome26.eth`, `nova-ethrome26.eth`) rather
-  than subnames under one parent; Component 3 explains why.
 - Content is encrypted, content-addressed blobs on Swarm. What the agent knows, what it was
   told, what it decided. Where this is headed: any client holding the decryption key reads
   straight from Swarm, with no app code in the middle.
@@ -28,10 +25,8 @@ once the host app changes? What happens to memory that shouldn't outlive the tas
 created it? And how does a second process notice a change without asking every second,
 forever?
 
-The three primitives the ETHRome sponsors put on the table this year answer those directly:
+The two primitives the ETHRome sponsors put on the table this year answer those directly:
 
-- ENS's own suggested direction: "profiles for AI agents inside an agent controlled
-  namespace." Detail in Component 3.
 - Swarm's own suggested direction: "portable AI memory that moves between assistants." If
   memory is content-addressed and sits off any single vendor's infrastructure, any client
   with the reference can read it.
@@ -41,9 +36,8 @@ The three primitives the ETHRome sponsors put on the table this year answer thos
   when its lease is up, and nothing else has to run.
 
 Swarm has no query language; it stores encrypted blobs. Arkiv's own docs call it an index,
-which is the role it plays here: metadata and expiry, no bulk storage. ENS resolves a name to
-something and holds no data of its own. The product lives in the seam between the three,
-which is also why no single sponsor's brief covers it alone.
+which is the role it plays here: metadata and expiry, no bulk storage. The product lives in
+the seam between the two, which is also why no single sponsor's brief covers it alone.
 
 ## Who this is for
 
@@ -55,10 +49,9 @@ Sept 14 2026, part of Swiss {ai} Weeks), presenting to the companies in the room
 Memory Mesh is the memory layer underneath it.
 
 Path to the first 100 users: the repo is public now, so that event's own agent builders can
-point at it directly. The pattern doesn't care which framework you're on, because an ENS name
-plus a Swarm reference reads from any client, which suits LangChain, CrewAI, and
-AutoGen-style builders equally. And we keep reusing it ourselves at every hackathon after
-this one.
+point at it directly. The pattern doesn't care which framework you're on, because a Swarm
+reference reads from any client, which suits LangChain, CrewAI, and AutoGen-style builders
+equally. And we keep reusing it ourselves at every hackathon after this one.
 
 ## Architecture
 
@@ -94,7 +87,7 @@ EXPIRY
 
 ## Real-agent proof
 
-The browser UI (write form plus live feed) proves the Arkiv/Swarm/ENS plumbing works, but a
+The browser UI (write form plus live feed) proves the Arkiv/Swarm plumbing works, but a
 human clicking "write memory" doesn't prove an AI agent would use it. `scripts/agent-chat.mjs`
 settles that: it hands a real Claude session two tools, `remember` and `recall`, wired to the
 same `/api/memory` and `/api/query` endpoints the browser uses, and lets the model decide
@@ -182,37 +175,6 @@ content, and this build hasn't verified retention over time. Confidentiality is 
 entirely by this app, which encrypts content before it reaches the gateway, so the gateway
 never sees plaintext.
 
-## Component 3: ENS (identity)
-
-Two names, one per agent, `atlas-ethrome26.eth` and `nova-ethrome26.eth`, registered against
-Sepolia's ENSv2 beta deployment. The original plan was one parent name plus a subname per
-agent (`atlas.<parent>.eth`). These are flat top-level names instead, because subname creation
-turned out to need a custom subregistry contract deployed, which didn't fit the time budget
-this leg had. A registered ENSv2 name is a real agent identity either way, and the bounty
-rewards depth of integration over any particular name shape.
-
-A wallet address identifies a signer. A name identifies an agent other systems can look up,
-independent of which key controls it at the moment. That's the "agent controlled namespace"
-ENS's own brief asks for, and it's what makes the identity portable.
-
-Registration path (`scripts/ens-register.mjs`): mint a test token, approve the registrar,
-commit, wait for `MIN_COMMITMENT_AGE`, register. The first attempt reverted because a doc-page
-summary had the registrar's `duration` parameter as `uint256` when the deployed contract takes
-`uint64`. A different type means a different function selector, so it reverted silently and
-told us nothing. Pulling the verified
-ABI from Blockscout fixed it, and both names registered clean after that (tx hashes below).
-
-Setting a profile text record is blocked, and it's a real architectural mismatch rather than a
-bug on our side. `TextResolver.setText()` sits behind an `authorised(node)` modifier, which
-calls `PublicResolverV2.isAuthorised()`, which calls `canModifyName()`. That function's first
-step is `NAME_WRAPPER.names(node)`, a lookup against the ENSv1 NameWrapper contract, and it
-returns `false` immediately when that comes back empty, before it ever checks real ownership.
-Names registered natively through ENSv2's own `ETHRegistrar` never touch the v1 NameWrapper,
-so the lookup returns `0x` for both names here (checked directly). The other resolver in the
-Sepolia deployments table, `ENSV2Resolver`, is a read-only CCIP-read mirror that only forwards
-lookups. Registration alone already satisfies "does real work" and "end-to-end on live testnet
-data," so this wasn't pursued further.
-
 ## Evidence
 
 The public deployment is `https://agent-memory-mesh.vercel.app`, permanent, under the project
@@ -220,18 +182,6 @@ owner's own Vercel account. The full write, Swarm, Arkiv, query round trip is ve
 there. The deployment-hash URL Vercel prints after `vercel deploy` 302s to Vercel's own SSO
 login, since Deployment Protection is on by default, so the stable project-alias URL above is
 the one to share.
-
-ENS, ENSv2 beta on Sepolia. Owner of both names: `0x0Ef440b8C9Ce507Ce5f84c6b9EA7FB8b2C11a006`.
-
-| Name | Register tx | Block |
-|---|---|---|
-| `atlas-ethrome26.eth` | [`0xe9c7380f9e07c85a2120f17df787891d088ba58ccadc8e8b9ba9f5a2c4abaa63`](https://sepolia.etherscan.io/tx/0xe9c7380f9e07c85a2120f17df787891d088ba58ccadc8e8b9ba9f5a2c4abaa63) | 11683692 |
-| `nova-ethrome26.eth` | [`0xc7e9fa2fe1d25a026ef8fa8b4e15ca9d2a6cf159463f2d6e686f8cfea798b432`](https://sepolia.etherscan.io/tx/0xc7e9fa2fe1d25a026ef8fa8b4e15ca9d2a6cf159463f2d6e686f8cfea798b432) | 11683703 |
-
-Contracts (Sepolia ENSv2 beta): `ETHRegistrar` `0xa88553f454b77203b0d036a05c894d555eaaa2cc`,
-`MockUSDC` `0x768f42455a2d082e23ceef7d51e5787c82d67a39`,
-`PublicResolverV2` `0xe7b9a25607e02da8145e4eb1836ca539e53f11f7` (set as resolver at
-registration).
 
 Arkiv, Tiramisu. Creator/owner wallet: `0x9F5997ecB905211a464F29090900468BDBa286C1`.
 
@@ -302,12 +252,6 @@ This is the Mission 03 artifact, and Evidence above has a recorded proof of one 
 - `npm run feedback:repro` (`scripts/feedback/`) runs every finding in
   [`feedback.md`](feedback.md) against the live network and prints the observed values. Add
   `-- 03` to run a single one. Each script exits 0 when its finding reproduced.
-- `npm run ens:register -- <label>` (`scripts/ens-register.mjs`) registers a flat ENSv2 name
-  on Sepolia through the commit-reveal flow. Needs `PRIVATE_KEY`, a Sepolia-funded wallet, in
-  the environment.
-- `npm run ens:set-text -- <label> "<text>"` (`scripts/ens-set-text.mjs`) attempts a profile
-  text record on a registered name. Blocked by a real `PublicResolverV2` limitation; see
-  Component 3 above.
 - `npm run agent -- <atlas|nova> "<message>"` (`scripts/agent-chat.mjs`) talks to the mesh
   through a real Claude session with `remember`/`recall` tools, instead of a human filling out
   the write form. Needs `npm start` running in another terminal and `ANTHROPIC_API_KEY` set;

@@ -79,11 +79,11 @@ remediation, high priority, short-lived."`
 Beat 2. Run `node --env-file=.env scripts/agent-chat.mjs nova "Anything flagged for
 remediation right now?"`.
 
-> Nova is a separate process, a different framework, no shared database with Atlas. It
-> queried Atlas's memory directly, found the incident, and claimed it — its own memory
-> entry, its own short lease, saying "I've got this." Nova fetched the detail straight from
-> Swarm too, not from Atlas's app server, so it never had to trust that server with the
-> content.
+> Nova is a separate process, a different framework — it never talks to Atlas's app at all.
+> It queried the shared index for anything tagged agent_id atlas, found the incident, and
+> claimed it — its own entry, its own short lease, saying "I've got this." The detail itself
+> came straight from Swarm by the pointer in that entry, so Nova never touched Atlas's
+> server, only the public index and the public content store.
 
 Beat 3. Cut to the second terminal tab, expiry output already complete.
 

@@ -7,14 +7,14 @@ import Anthropic from '@anthropic-ai/sdk'
 import { betaTool } from '@anthropic-ai/sdk/helpers/beta/json-schema'
 
 const BASE_URL = process.env.BASE_URL ?? 'http://localhost:3000'
-const ENS_NAME = { atlas: 'atlas-ethrome26.eth', nova: 'nova-ethrome26.eth' }
+const AGENT_IDS = ['atlas', 'nova']
 
 const [agentId, message] = process.argv.slice(2)
 if (!agentId || !message) {
   console.error('usage: node scripts/agent-chat.mjs <atlas|nova> "<message>"')
   process.exit(1)
 }
-if (!ENS_NAME[agentId]) {
+if (!AGENT_IDS.includes(agentId)) {
   console.error('agentId must be "atlas" or "nova"')
   process.exit(1)
 }
@@ -91,7 +91,7 @@ const recallTool = betaTool({
   },
 })
 
-const system = `You are ${agentId}, an AI agent with the identity ${ENS_NAME[agentId]} on Agent Memory Mesh. ` +
+const system = `You are ${agentId}, an AI agent on Agent Memory Mesh. ` +
   'You have two tools: remember and recall. Use them naturally when the conversation calls for it. ' +
   'Reply with only what was stored or found, stated plainly in a sentence or two. ' +
   'No caveats, opinions, suggestions, or commentary beyond that.'
