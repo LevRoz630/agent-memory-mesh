@@ -40,13 +40,13 @@ reference plus searchable metadata; Swarm holds the encrypted bytes.
 **The five entity roles**, all one `agent_memory` type on Arkiv, differing only by `memory_type`
 and sharing one `tag` per incident:
 
-| Role | `memory_type` | TTL | Written by |
-|---|---|---|---|
-| incident | `event` | 600 blocks | reporting agent |
-| claim | `claim` | 12 blocks, renewed while working | working agent |
-| lane | `lane` | 600 blocks | each agent, once, on first Swarm write |
-| done | `done` | 600 blocks | finishing agent |
-| verdict | `verdict` | 600 blocks | reporting agent, after checking |
+| Role     | `memory_type` | TTL                              | Written by                             |
+| -------- | --------------- | -------------------------------- | -------------------------------------- |
+| incident | `event`       | 600 blocks                       | reporting agent                        |
+| claim    | `claim`       | 12 blocks, renewed while working | working agent                          |
+| lane     | `lane`        | 600 blocks                       | each agent, once, on first Swarm write |
+| done     | `done`        | 600 blocks                       | finishing agent                        |
+| verdict  | `verdict`     | 600 blocks                       | reporting agent, after checking        |
 
 Claims expire on their own; everything else persists — the incident's full history survives even
 after every claim on it has lapsed.
@@ -66,71 +66,42 @@ before finalizing, to catch a rival whose write landed a block later.
 **The lifecycle** (live, on the real testnet) — a double hand-off, not just one:
 
 ```
-atlas files event/42
+incident/42 filed
         │
-        ├─ nova claims (12-block lease)
-        ├─ nova publishes diagnosis → nova's lane, index 0
+        ├─ atlas claims (12-block lease)
+        ├─ atlas publishes diagnosis → atlas's lane, index 0
+        ├─ atlas renews claim + heartbeat
+        ✗  atlas dies — claim lapses, heartbeat lapses
+        │
+        ├─ nova: query claim/42 → none
+        ├─ nova: query lane/42 → atlas's wallet
+        ├─ nova reads atlas's lane, resumes from the diagnosis instead of restarting
+        ├─ nova claims, publishes a partial fix → nova's lane, index 0
         ├─ nova renews claim + heartbeat
-        ✗  nova dies — claim lapses, heartbeat lapses
+        ✗  nova dies too — claim lapses, heartbeat lapses
         │
         ├─ sol: query claim/42 → none
-        ├─ sol: query lane/42 → nova's wallet
-        ├─ sol reads nova's lane, resumes from the diagnosis instead of restarting
-        ├─ sol claims, publishes a partial fix → sol's lane, index 0
-        ├─ sol renews claim + heartbeat
-        ✗  sol dies too — claim lapses, heartbeat lapses
-        │
-        ├─ atlas: query claim/42 → none
-        ├─ atlas: query lane/42 → TWO wallets now, nova's and sol's
-        ├─ atlas checks both: claims lapsed AND heartbeats lapsed → both confirmed dead,
+        ├─ sol: query lane/42 → TWO wallets now, atlas's and nova's
+        ├─ sol checks both: claims lapsed AND heartbeats lapsed → both confirmed dead,
         │  not just slow (a lapsed claim alone can mean "behind", not "gone" — heartbeat
         │  lapsing too is the second, independent signal that closes that gap)
-        ├─ atlas reads sol's lane — the latest, not nova's stale diagnosis — and resumes
-        │  from sol's partial fix
-        ├─ atlas claims, finishes the fix, writes done/42
-        └─ atlas writes verdict/42, outcome: fixed
+        ├─ sol reads nova's lane — the latest, not atlas's stale diagnosis — and resumes
+        │  from nova's partial fix
+        ├─ sol claims, finishes the fix, writes done/42
+        └─ sol is now the only agent standing — the protocol won't let a finisher verify
+           its own fix, so no verdict/42 is written until atlas or nova comes back online
 ```
 
 The mechanism for this needs no new code beyond what's already built: `takeOver` already queries
 *every* `lane` row for a tag, not just the most recent worker's, so a third agent arriving after
-two deaths gets both nova's and sol's lane content back and has to pick the latest one itself.
+two deaths gets both atlas's and nova's lane content back and has to pick the latest one itself.
 Heartbeats add the second confirmation signal — claim-lapse alone was always advisory, not proof
 of death; claim-lapse *and* heartbeat-lapse together is real corroborating evidence, not a guess.
+The self-verification exclusion is a deliberate rule, not a gap: a fix isn't "checked" if the
+only agent left to check it is the one that just wrote it.
 
 Nothing here is simulated in front of a mock — every step is a real write against a live testnet
 and a live Swarm gateway.
-
-## 4. What's new: from fixed roles to peer symmetry
-
-**The old model**: atlas monitors and never fixes; nova and sol are the only two that can claim
-and work an incident. Only one specific failure — atlas's own scenario — was ever detectable, and
-`verify()` always ran as atlas, hardcoded.
-
-**The new model** (built this session, on branch `feat/peer-symmetric-maintenance`): any of the
-three agents can detect a peer's outage, claim it, fix it, and verify the fix. Which agent plays
-which role on a given incident is now decided by who's alive and who acts first, not by a fixed
-identity.
-
-The mechanism reuses the exact same trick claims already use — an expiring lease — just for
-liveness instead of work-ownership:
-
-- **Heartbeat**: each agent renews a short-lived Arkiv row for itself (`memory_type: 'heartbeat'`,
-  tag `agent-<id>`, 8-block lease, renewed every ~1/3 of that). No new primitive — the identical
-  renewal-cadence code as claim renewal.
-- **Peer-watch**: every agent also polls its two peers' heartbeat tags. A lapse on **two
-  consecutive polls** (not one — a single empty check can misfire on ordinary 1-2 block index lag
-  right after a write, which a real fix round in this session's build caught and closed) triggers
-  filing an `event` incident tagged `outage-<peerId>`. Whoever notices isn't necessarily who
-  fixes — filing just makes the incident visible; the existing claim race decides who works it.
-- **`verify(ctx, verifierAgentId, tag)`**: generalized from a hardcoded atlas-only function to
-  take the verifying agent as a parameter, so whichever agent notices the `done` row can check
-  the fix and write the verdict.
-
-Status as of this document: heartbeat type, renewal, and peer-outage detection are built, live-
-tested against Tiramisu, and reviewed. `verify()`'s generalization is complete. Wiring this into
-the live demo controller (so a killed agent is actually detected and recovered by its peers in
-the running demo, not just in isolated test scripts) is the next and final step — built and
-verified at the mechanism level, not yet wired into the demo you'd click through.
 
 ## 5. The live demo
 
@@ -140,19 +111,18 @@ A control-room UI already exists, mapping the three agents to three data centers
 - `nova` → DC-2 Amsterdam
 - `sol` → DC-3 Milan
 
-The demo: an incident hits a rack in DC-1 (8 servers unreachable, top-of-rack switch silent).
-Atlas files it. Nova and sol race to claim it; the loser backs off. The winner works through real
-remediation steps (diagnose the rack, power-cycle via IPMI, confirm servers back online),
-publishing progress to its lane as it goes.
+The demo: an incident hits a rack (8 servers unreachable, top-of-rack switch silent). Atlas claims
+it and starts working through real remediation steps (diagnose the rack, power-cycle via IPMI,
+confirm servers back online), publishing progress to its lane as it goes.
 
-The version worth showing on camera is the double hand-off, not a single one: cut power to the
-winner mid-fix — its lease lapses, its heartbeat lapses. The remaining worker notices no claim,
-finds the dead agent's lane, and resumes from its progress instead of restarting. Cut power to
-*that* agent too, partway through its own fix. What's left is atlas, which has to notice that
-**two** agents have now gone dark, find **both** their lanes, confirm both are actually dead (not
-just slow — a lapsed claim alone is ambiguous, a lapsed claim *and* a lapsed heartbeat together
-isn't), resume from whichever lane has the latest progress, and finish the job itself. Once the
-fix lands, the data centers come back online.
+The version worth showing on camera is the double hand-off, not a single one: cut power to atlas
+mid-fix — its lease lapses, its heartbeat lapses. Nova notices no claim, finds atlas's lane, and
+resumes from its progress instead of restarting. Cut power to nova too, partway through its own
+fix. What's left is sol, which has to notice that **two** agents have now gone dark, find **both**
+their lanes, confirm both are actually dead (not just slow — a lapsed claim alone is ambiguous, a
+lapsed claim *and* a lapsed heartbeat together isn't), resume from whichever lane has the latest
+progress, and finish the job itself. Sol then can't write the verdict alone — verification waits
+for atlas or nova to come back online. Once the fix lands, the data centers come back online.
 
 The peer-symmetric work above is what makes this possible at all: today the demo can only show
 DC-1 (atlas) going down once, with DC-2/DC-3 recovering it. Once wired in, any of the three data
@@ -189,6 +159,7 @@ public.
 ## 7. What's real vs. what's future work
 
 **Built and live-verified against the real testnet and gateway:**
+
 - The full claim → lane → takeover → finish → verify lifecycle
 - The deterministic tie-break, including its settle-window fix for cross-block race conditions
 - Per-agent lanes with resumable work (a successor genuinely reads a dead worker's progress)
@@ -198,6 +169,7 @@ public.
   peer going down)
 
 **Explicitly deferred, stated plainly rather than glossed over:**
+
 - Memories over 4KB — one postage stamp covers exactly one chunk; larger content is refused, not
   split. Splitting across multiple stamped chunks with a manifest is the fix, not yet built.
 - Real per-process key custody — today one process holds every key (three agents' and the

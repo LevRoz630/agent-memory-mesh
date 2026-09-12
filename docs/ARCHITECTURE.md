@@ -149,34 +149,34 @@ of restarting.
 A double hand-off — two agents can die in sequence, and the third has to notice both:
 
 ```
-                nova                                  sol                        atlas
-  ├─ claim/42 (12-block lease)                          │                          │
-  ├─ swarm: diagnosis → lane index 0                     │                          │
-  ├─ lane/42, renew claim + heartbeat every ~1/3 lease   │                          │
-  ✗  dies — claim lapses, heartbeat lapses               │                          │
-                                                          ├─ query claim/42 → none
-                                                          ├─ query lane/42 → nova's wallet
-                                                          ├─ read nova's lane, resume from diagnosis
-                                                          ├─ claim/42 ─────────────►
-                                                          ├─ swarm: partial fix → lane index 0
-                                                          ├─ lane/42, renew claim + heartbeat
-                                                          ✗  dies too — claim lapses, heartbeat lapses
-                                                                                    │
-                                                                    ├─ query claim/42 → none
-                                                                    ├─ query lane/42 → nova's AND sol's wallets
-                                                                    ├─ check both: claim lapsed AND
-                                                                    │  heartbeat lapsed → both confirmed
-                                                                    │  dead, not just slow
-                                                                    ├─ read sol's lane (the latest,
-                                                                    │  not nova's stale diagnosis)
-                                                                    ├─ claim/42, finish the fix
-                                                                    ├─ lane/42, done/42, delete own claim
-                                                                    └─ verdict/42 outcome=fixed
+  atlas                                nova                                  sol
+  ├─ claim/42 (12-block lease)          │                                     │
+  ├─ swarm: diagnosis → lane index 0    │                                     │
+  ├─ lane/42, renew claim + heartbeat   │                                     │
+  ✗  dies — claim lapses, heartbeat lapses
+                                        ├─ query claim/42 → none
+                                        ├─ query lane/42 → atlas's wallet
+                                        ├─ read atlas's lane, resume from diagnosis
+                                        ├─ claim/42 ─────────────►
+                                        ├─ swarm: partial fix → lane index 0
+                                        ├─ lane/42, renew claim + heartbeat
+                                        ✗  dies too — claim lapses, heartbeat lapses
+                                                                              ├─ query claim/42 → none
+                                                                              ├─ query lane/42 → atlas's AND nova's wallets
+                                                                              ├─ check both: claim lapsed AND
+                                                                              │  heartbeat lapsed → both confirmed
+                                                                              │  dead, not just slow
+                                                                              ├─ read nova's lane (the latest,
+                                                                              │  not atlas's stale diagnosis)
+                                                                              ├─ claim/42, finish the fix
+                                                                              └─ lane/42, done/42, delete own claim
 ```
 
-A single hand-off (one death, one successor) is the same mechanism with one fewer round — the
-double case is what proves `takeOver` handling multiple prior owners, and heartbeat-plus-claim
-together confirming death rather than either alone.
+Sol is now the only agent standing, and `verify()` refuses to let a finisher grade its own fix —
+so no verdict is written until atlas or nova comes back online and checks sol's work. A single
+hand-off (one death, one successor, a survivor free to verify) is the same mechanism with one
+fewer round; the double case is what proves `takeOver` handling multiple prior owners, and
+heartbeat-plus-claim together confirming death rather than either alone.
 
 Write order in `finish`: lane content → `lane` row → `done` → delete own claim. Check order
 before claiming: `verdict` → `done` → `claim`.

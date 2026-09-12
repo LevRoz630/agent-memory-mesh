@@ -56,16 +56,17 @@ fails too.
 - A mid-size hosting provider: a few thousand servers across 3–4 data centers.
 - One watchdog agent per data center that detects dead servers and recovers them.
 - The story:
-  1. **Atlas** (DC-1) sees a rack go dark and files the incident.
-  2. DC-1 loses power. Atlas dies with it. The incident is still open.
-  3. **Nova** (DC-2) finds the unclaimed incident, claims it and starts recovery.
-  4. Nova's region fails mid-fix. Its claim expires on its own.
-  5. **Sol** (DC-3) takes over and finishes.
+  1. **Atlas** sees a rack go dark, claims the incident, and starts working it.
+  2. Atlas's DC loses power mid-fix. Its claim expires, its heartbeat lapses.
+  3. **Nova** finds the unclaimed incident, resumes from Atlas's own notes, and keeps working.
+  4. Nova's region fails too. Its claim expires, its heartbeat lapses.
+  5. **Sol** notices both are gone — not just slow, actually gone — and finishes the job.
+  6. Sol can't grade its own work, so the fix stays unverified until Atlas or Nova is back.
 
 **Speaker note:** This is the demo you're about to see. Every agent proves it's alive with the
 same trick a claim already uses — a lease that expires unless renewed — so "is Atlas still up?"
 is a query, not a separate monitoring system. No agent had to be told the others died; each one
-noticed on its own.
+noticed on its own. And the system won't let the last agent standing declare its own victory.
 
 ---
 
