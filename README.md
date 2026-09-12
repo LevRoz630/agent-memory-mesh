@@ -21,6 +21,20 @@ Full architecture, schema, evidence (addresses, tx hashes), and demo script:
 [`NOTES.md`](NOTES.md).
 Arkiv feedback report: [`feedback.md`](feedback.md).
 
+## Who this is for
+
+Teams building multi-agent AI systems for enterprises hit this exact wall: agent memory
+locked to one framework's session store, no native expiry, no identity separate from an
+API key. This is a live problem for us specifically — we're building an AI agentic
+deployment for enterprises at the HPE & NVIDIA Agentic AI Hackathon (HPE Geneva Customer
+Innovation Center, Sept 14 2026, part of Swiss {ai} Weeks), presenting to the companies in
+the room, and Agent Memory Mesh is the memory layer for that deployment.
+
+Path to the first 100 users: the repo is public now, so that event's own agent builders
+can point at it directly; the pattern is framework-agnostic — an ENS name plus a Swarm
+reference reads from any client, fitting LangChain, CrewAI, or AutoGen-style builders
+equally; and we reuse it ourselves at every hackathon after this one.
+
 ## Setup
 
 ```bash
@@ -49,6 +63,9 @@ the actual Mission 03 artifact; see `NOTES.md` for a recorded proof.
 
 ## Scripts
 
+- `npm run demo` (`scripts/run-demo.mjs`) — the one-command version: chains Atlas
+  remembering, Nova's cross-agent recall, a compound query, and the expiry demo below.
+  Needs `npm start` running in another terminal.
 - `npm run demo:expiry` (`scripts/demo-expiry.mjs`) — Mission 02 evidence, reproducible:
   writes a short-lived memory, queries it (present), waits past its expiry block, queries
   again (gone), with no `deleteEntity` call anywhere.

@@ -86,7 +86,7 @@ const recallTool = betaTool({
     console.log(`     ✓ ${rows.length} match(es)`)
     if (!rows.length) return 'no memories found matching that filter'
     return rows
-      .map((r) => `- [${r.attributes.memory_type}/${r.attributes.tag}] ${JSON.stringify(r.content)} (importance ${r.attributes.importance}, expires block ${r.expiresAt})`)
+      .map((r) => `- [${r.attributes.memory_type}/${r.attributes.tag}] ${JSON.stringify(r.content)}, importance ${r.attributes.importance}, expires block ${r.expiresAt}`)
       .join('\n')
   },
 })
@@ -97,13 +97,17 @@ const system = `You are ${agentId}, an AI agent with the identity ${ENS_NAME[age
 
 const client = new Anthropic()
 
-const finalMessage = await client.beta.messages.toolRunner({
-  model: 'claude-opus-5',
-  max_tokens: 2048,
-  system,
-  tools: [rememberTool, recallTool],
-  messages: [{ role: 'user', content: message }],
-})
-
-const text = finalMessage.content.filter((b) => b.type === 'text').map((b) => b.text).join('\n')
-console.log(`\n${agentId}: ${text}`)
+try {
+  const finalMessage = await client.beta.messages.toolRunner({
+    model: 'claude-opus-5',
+    max_tokens: 2048,
+    system,
+    tools: [rememberTool, recallTool],
+    messages: [{ role: 'user', content: message }],
+  })
+  const text = finalMessage.content.filter((b) => b.type === 'text').map((b) => b.text).join('\n')
+  console.log(`\n${agentId}: ${text}`)
+} catch (e) {
+  console.error(`\n${agentId} failed: ${e.message}`)
+  process.exit(1)
+}

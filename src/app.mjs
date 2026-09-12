@@ -23,7 +23,7 @@ async function withContent(entity) {
   } catch (e) {
     content = { error: `content unavailable: ${e.message}` }
   }
-  return { key: entity.key, expiresAt: String(entity.expiresAt), attributes: serializeAttrs(entity.attributes), content }
+  return { key: entity.key, owner: entity.owner, expiresAt: String(entity.expiresAt), attributes: serializeAttrs(entity.attributes), content }
 }
 
 export function createApp({ pub, wallet }) {

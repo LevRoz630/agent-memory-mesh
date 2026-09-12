@@ -54,7 +54,7 @@ Draft answer (from working session, needs a read-through before it's final):
 > CrewAI/AutoGen-style builders — the ENS+Swarm reference is readable by any client, not
 > tied to one runtime), and reuse it ourselves at every hackathon after this one.
 
-- [ ] confirm comfort naming HPE/NVIDIA explicitly before this goes in `README.md` or on camera
+- [x] confirm comfort naming HPE/NVIDIA explicitly before this goes in `README.md` or on camera
 - [ ] condense to one spoken sentence
 - Target: ~30s
 
@@ -81,6 +81,6 @@ Draft answer (from working session, needs a read-through before it's final):
 
 - [ ] rehearse once against the deployed URL before recording
 - [ ] decide who presents which section
-- [ ] finalize the usefulness paragraph above and copy the agreed version into `README.md`
+- [x] finalize the usefulness paragraph above and copy the agreed version into `README.md`
 - [ ] re-check `hub.arkiv.network/ethrome` once more before judging — noted in `NOTES.md`
       as a page that's changed mid-event before

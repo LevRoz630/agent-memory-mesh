@@ -135,6 +135,7 @@ const $ = (id) => document.getElementById(id)
 const SWARM_GATEWAY = 'https://api.gateway.ethswarm.org'
 const EXPLORER = 'https://tiramisu.explorer.arkiv.network'
 const short = (s) => s ? s.slice(0, 10) + '…' : ''
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
 
 function proofLinks({ key, owner, swarmRef }) {
   const parts = []
@@ -152,11 +153,9 @@ function logLine(html, cls) {
   while ($('log').children.length > 100) $('log').lastChild.remove()
 }
 
-let head = 0n
 async function pollHead() {
   try {
     const { head: h } = await (await fetch('/api/head')).json()
-    head = BigInt(h)
     $('head').textContent = `Tiramisu block: ${h}`
   } catch {}
 }
@@ -192,7 +191,7 @@ $('writeBtn').onclick = async () => {
 function renderRow(a, content, proof) {
   const tr = document.createElement('tr')
   const contentText = content?.error ? content.error : (content?.note ?? JSON.stringify(content))
-  tr.innerHTML = `<td>${a.agent_id ?? ''}</td><td>${a.memory_type ?? ''}</td><td>${a.tag ?? ''}</td><td>${a.importance ?? ''}</td><td class="content">${contentText}</td><td>${proof}</td>`
+  tr.innerHTML = `<td>${esc(a.agent_id)}</td><td>${esc(a.memory_type)}</td><td>${esc(a.tag)}</td><td>${esc(a.importance)}</td><td class="content">${esc(contentText)}</td><td>${proof}</td>`
   return tr
 }
 
@@ -270,8 +269,8 @@ $('queryBtn').onclick = async () => {
       tr.className = 'expired'
     }
     const contentText = r.content?.error ? r.content.error : (r.content?.note ?? JSON.stringify(r.content))
-    const proof = proofLinks({ key: r.key, swarmRef: r.attributes.swarm_ref })
-    tr.innerHTML = `<td>${r.attributes.tag ?? ''}</td><td>${r.attributes.importance ?? ''}</td><td class="content">${contentText}</td><td>${r.expiresAt}${expired ? ' (expired, head=' + headRes.head + ')' : ''}</td><td>${proof}</td>`
+    const proof = proofLinks({ key: r.key, owner: r.owner, swarmRef: r.attributes.swarm_ref })
+    tr.innerHTML = `<td>${esc(r.attributes.tag)}</td><td>${esc(r.attributes.importance)}</td><td class="content">${esc(contentText)}</td><td>${r.expiresAt}${expired ? ' (expired, head=' + headRes.head + ')' : ''}</td><td>${proof}</td>`
     $('queryRows').appendChild(tr)
   }
   if (!rows.length) $('queryRows').innerHTML = '<tr><td colspan="5">no rows — either nothing matches, or everything that did has expired</td></tr>'

@@ -74,8 +74,10 @@ export function unwrapAttributes(attrs) {
   return Object.fromEntries(Object.entries(attrs ?? {}).map(([k, v]) => [k, v?.value ?? v]))
 }
 
+// select('*') silently omits `owner` on the live Tiramisu node despite toRpcSelect building
+// { owner: true, ... } for it — confirmed empirically. An explicit field list gets it back.
 async function runQuery(pub, pred, limit) {
-  const result = await pub.select('*').where(pred).limit(limit).fetch()
+  const result = await pub.select({ key: true, owner: true, expiresAt: true, attributes: true }).where(pred).limit(limit).fetch()
   const entities = Array.isArray(result) ? result : (result?.entities ?? [])
   return entities.map((e) => ({ ...e, attributes: unwrapAttributes(e.attributes) }))
 }
