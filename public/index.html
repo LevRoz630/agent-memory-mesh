@@ -110,9 +110,9 @@
   <div id="log"></div>
 </fieldset>
 
+<script src="swarm-chunk.js"></script>
 <script>
 const $ = (id) => document.getElementById(id)
-const SWARM_GATEWAY = 'https://api.gateway.ethswarm.org'
 const EXPLORER = 'https://tiramisu.explorer.arkiv.network'
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
 // Only ever interpolated into logLine's innerHTML, and its inputs come off-chain, so it escapes.
@@ -127,9 +127,22 @@ function proofLinks({ key, owner, swarmRef }) {
   const parts = []
   if (key) parts.push(`<a class="proof mono" target="_blank" href="${EXPLORER}/entity/${url(key)}">key ↗</a>`)
   if (owner) parts.push(`<a class="proof mono" target="_blank" href="${EXPLORER}/address/${url(owner)}">owner ↗</a>`)
-  if (swarmRef) parts.push(`<a class="proof mono" target="_blank" href="${SWARM_GATEWAY}/bytes/${url(swarmRef)}">swarm ↗</a>`)
+  if (swarmRef) parts.push(`<a class="proof mono" data-swarm-ref="${esc(swarmRef)}" href="${esc(swarmChunkUrl(swarmRef))}">swarm ↗</a>`)
   return parts.join('')
 }
+
+document.addEventListener('click', async (ev) => {
+  const link = ev.target.closest('a[data-swarm-ref]')
+  if (!link) return
+  ev.preventDefault()
+  const ref = link.dataset.swarmRef
+  try {
+    const chunk = await fetchSwarmChunk(ref)
+    logLine(`swarm ${short(ref)} fetched from ${esc(chunk.host)}: ${esc(chunk.bytes)} encrypted bytes <span class="mono">${esc(chunk.hex)}${chunk.truncated ? '…' : ''}</span>`, 'phase-resolved')
+  } catch (e) {
+    logLine(`✕ swarm ${short(ref)}: ${esc(e.message)}`, 'ignored')
+  }
+})
 
 function logLine(html, cls) {
   const div = document.createElement('div')

@@ -69,10 +69,10 @@
   <div id="reportOut"></div>
 </fieldset>
 
+<script src="swarm-chunk.js"></script>
 <script>
 const $ = (id) => document.getElementById(id)
 const EXPLORER = 'https://tiramisu.explorer.arkiv.network'
-const SWARM_GATEWAY = 'https://api.gateway.ethswarm.org'
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
 const url = (s) => esc(encodeURIComponent(String(s ?? '')))
 const AGENTS = ['atlas', 'nova', 'sol']
@@ -110,7 +110,7 @@ function render() {
 
   if (state.report) {
     $('reportRef').innerHTML =
-      `Swarm ref <a target="_blank" rel="noopener" href="${SWARM_GATEWAY}/chunks/${url(state.report.swarmRef)}">${esc(state.report.swarmRef)}</a><br>` +
+      `Swarm ref <a data-swarm-ref="${esc(state.report.swarmRef)}" href="${esc(swarmChunkUrl(state.report.swarmRef))}">${esc(state.report.swarmRef)}</a><br>` +
       `Arkiv entity <a target="_blank" rel="noopener" href="${EXPLORER}/entity/${url(state.report.entityKey)}">${esc(state.report.entityKey)}</a>`
     $('openSol').disabled = false
     $('openOutsider').disabled = false
@@ -188,6 +188,18 @@ async function openReport(as) {
     } else {
       $('reportOut').innerHTML = `<p class="denied">${esc(data.error)}</p><p>What the gateway or anyone else sees (${esc(data.bytes)} bytes):</p><pre>${esc(data.ciphertextPreview)}…</pre>`
     }
+  } catch (e) {
+    $('reportOut').textContent = `FAILED: ${e.message}`
+  }
+}
+$('reportRef').onclick = async (ev) => {
+  const link = ev.target.closest('a[data-swarm-ref]')
+  if (!link) return
+  ev.preventDefault()
+  $('reportOut').textContent = 'fetching from the Swarm gateway…'
+  try {
+    const chunk = await fetchSwarmChunk(link.dataset.swarmRef)
+    $('reportOut').innerHTML = `<p>Fetched by your browser straight from <b>${esc(chunk.host)}</b>: ${esc(chunk.bytes)} bytes, encrypted. Nobody can read it without a key on the incident's roster.</p><pre>${esc(chunk.hex)}${chunk.truncated ? '…' : ''}</pre>`
   } catch (e) {
     $('reportOut').textContent = `FAILED: ${e.message}`
   }
