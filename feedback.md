@@ -76,8 +76,8 @@ These held up under actual product use, not just a standalone probe:
 - **Attribute charset is real and strictly enforced.** Every attribute in this schema
   (`agent_id`, `memory_type`, `tag`, `importance`, `swarm_ref`) is snake_case by design,
   specifically because camelCase is silently accepted by the client and rejected on-chain
-  (documented in this repo's `docs/PRODUCT.md` before a single write was attempted, and
-  every write since has gone through clean).
+  (documented in this repo's `NOTES.md` before a single write was attempted, and every
+  write since has gone through clean).
 - **Compound queries work as documented.** `and(eq(...), eq(...), gte(...))` and
   `and(eq(...), startsWith(...))` both return correct live results against real written
   entities — not a synthetic probe, actual product queries.

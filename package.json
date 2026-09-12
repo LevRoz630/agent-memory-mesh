@@ -5,6 +5,12 @@
   "type": "module",
   "license": "MIT",
   "description": "Agent memory as identity (ENSv2) + content (Swarm) + expiring index (Arkiv) — ETHRome 2026",
+  "scripts": {
+    "start": "node --env-file=.env server.mjs",
+    "demo:expiry": "node --env-file=.env scripts/demo-expiry.mjs",
+    "ens:register": "node --env-file=.env scripts/ens-register.mjs",
+    "ens:set-text": "node --env-file=.env scripts/ens-set-text.mjs"
+  },
   "dependencies": {
     "@arkiv-network/sdk": "^0.8.0",
     "viem": "^2.56.3",

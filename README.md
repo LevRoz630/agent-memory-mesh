@@ -7,7 +7,7 @@ An AI agent's memory, implemented as three separate concerns instead of one data
 - **Identity** — an ENSv2 name on Sepolia. The agent's name is not a display string, it's
   the thing other systems resolve to find the agent. (Registered as flat top-level names —
   `atlas-ethrome26.eth`, `nova-ethrome26.eth` — rather than subnames under one parent; see
-  `docs/PRODUCT.md` Component 3 for why.)
+  `NOTES.md` Component 3 for why.)
 - **Content** — encrypted, content-addressed blobs on Swarm. The actual memory: what the
   agent knows, what it was told, what it decided.
 - **Index** — typed, queryable, expiring records on Arkiv. Not the memory itself, a pointer
@@ -17,10 +17,9 @@ Two agent instances demonstrate it: one writes a memory, the other's view of the
 updates without a refresh, over a live subscription, not a polling loop. A short-lived
 memory expires from queries on its own, with no delete call, because its lease ran out.
 
-Full product and technical reference: [`docs/PRODUCT.md`](docs/PRODUCT.md).
-Build schedule, cut lines, qualification checklists: [`docs/build-plan.md`](docs/build-plan.md).
-Real addresses, transaction hashes, deployment URL: [`EVIDENCE.md`](EVIDENCE.md).
-Bugs and rough edges hit along the way: [`friction.md`](friction.md).
+Full architecture, schema, evidence (addresses, tx hashes), and demo script:
+[`NOTES.md`](NOTES.md).
+Arkiv feedback report: [`feedback.md`](feedback.md).
 
 ## Setup
 
@@ -41,22 +40,24 @@ Generate a fresh `MEMORY_ENC_KEY`: `node -e "console.log(require('crypto').rando
 ## Run locally
 
 ```bash
-node --env-file=.env server.mjs
+npm start
 ```
 
 Opens on `http://localhost:3000` — a write form plus a live feed that updates over a real
 websocket the moment any agent writes a memory (open two browser tabs to see it). This is
-the actual Mission 03 artifact; see `EVIDENCE.md` for a recorded proof.
+the actual Mission 03 artifact; see `NOTES.md` for a recorded proof.
 
 ## Scripts
 
-- `scripts/demo-expiry.mjs` — Mission 02 evidence, reproducible: writes a short-lived
-  memory, queries it (present), waits past its expiry block, queries again (gone), with no
-  `deleteEntity` call anywhere.
-- `scripts/ens-register.mjs <label>` — registers a flat ENSv2 name on Sepolia (commit-reveal
-  flow). Needs `PRIVATE_KEY` (a Sepolia-funded wallet) in the environment.
-- `scripts/ens-set-text.mjs` — attempts a profile text record on a registered name. Blocked
-  by a real `PublicResolverV2` limitation; see `friction.md`.
+- `npm run demo:expiry` (`scripts/demo-expiry.mjs`) — Mission 02 evidence, reproducible:
+  writes a short-lived memory, queries it (present), waits past its expiry block, queries
+  again (gone), with no `deleteEntity` call anywhere.
+- `npm run ens:register -- <label>` (`scripts/ens-register.mjs`) — registers a flat ENSv2
+  name on Sepolia (commit-reveal flow). Needs `PRIVATE_KEY` (a Sepolia-funded wallet) in the
+  environment.
+- `npm run ens:set-text -- <label> "<text>"` (`scripts/ens-set-text.mjs`) — attempts a
+  profile text record on a registered name. Blocked by a real `PublicResolverV2`
+  limitation; see `NOTES.md`.
 
 ## Deploy
 
@@ -69,11 +70,6 @@ vercel deploy --yes -e ARKIV_PRIVATE_KEY=... -e MEMORY_ENC_KEY=...
 (`vercel login` first if not already authenticated.) The deployed version has no
 persistent websocket (Vercel's serverless functions can't hold one) — the frontend
 automatically falls back to polling `/api/recent` every 3 seconds instead. The real
-subscription mechanism is demonstrated locally; see `docs/PRODUCT.md`'s architecture
-section and `EVIDENCE.md`. Note: the deployment-hash URL Vercel prints after deploying is
-behind Vercel's own SSO wall by default — use the plain project-alias URL above instead.
-
-## Status
-
-Built live during ETHRome 2026 (11–13 September, Rome). See `docs/build-plan.md` for
-where things stand against the schedule.
+subscription mechanism is demonstrated locally; see `NOTES.md`. Note: the deployment-hash
+URL Vercel prints after deploying is behind Vercel's own SSO wall by default — use the
+plain project-alias URL above instead.
