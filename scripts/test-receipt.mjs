@@ -1,10 +1,11 @@
-// Renders the public incident receipt HTML from a realistic resolved state. No network, no env vars.
+// Renders the public incident receipt SVG from a realistic resolved state. No network, no env vars.
 //
 //   node scripts/test-receipt.mjs
 
 import { renderReceipt } from '../src/receipt.mjs'
 
 const DANGEROUS_TEXT = 'nova probed the payload for injection: <script>alert(1)</script> and a "quote"'
+const LONG_TEXT = 'x'.repeat(300)
 
 function buildState() {
   const tag = 'incident-1757676543210'
@@ -14,7 +15,9 @@ function buildState() {
   const timeline = []
   for (let i = 0; i < 14; i++) {
     const agentId = ['atlas', 'nova', 'sol'][i % 3]
-    const text = i === 7 ? DANGEROUS_TEXT : `step ${i}: did something on the incident`
+    let text = `step ${i}: did something on the incident`
+    if (i === 7) text = DANGEROUS_TEXT
+    if (i === 12) text = LONG_TEXT
     timeline.push({ at: baseAt + i * 6000, agentId, text })
   }
   return {
@@ -38,24 +41,38 @@ const check = (name, ok) => {
   console.log(`  ${ok ? 'pass' : 'FAIL'}: ${name}`)
 }
 
-console.log('receipt renderer\n')
+console.log('receipt renderer (SVG)\n')
 
 const state = buildState()
-const html = renderReceipt(state)
-const bytes = Buffer.byteLength(html, 'utf8')
+const svg = renderReceipt(state)
+const bytes = Buffer.byteLength(svg, 'utf8')
 
-check('starts with <!doctype html>', /^<!doctype html>/i.test(html))
-check('contains the incident tag', html.includes(state.tag))
-check('contains the entityKey', html.includes(state.report.entityKey))
-check('contains the swarmRef', html.includes(state.report.swarmRef))
-check('contains the resolving agent (sol)', /\bsol\b/.test(html))
-check('every timeline text appears escaped', state.timeline.every((e) => {
+const trimmed = svg.trim()
+check('starts with <svg or <?xml', /^(<svg|<\?xml)/i.test(trimmed))
+
+const openTextCount = (svg.match(/<text/g) || []).length
+const closeTextCount = (svg.match(/<\/text>/g) || []).length
+check('every <text> is closed', openTextCount > 0 && openTextCount === closeTextCount)
+
+check('contains the incident tag', svg.includes(state.tag))
+check('contains the entityKey', svg.includes(state.report.entityKey))
+check('contains the swarmRef', svg.includes(state.report.swarmRef))
+check('contains the resolving agent (sol)', /\bsol\b/.test(svg))
+
+check('every non-truncated timeline text appears escaped', state.timeline.every((e) => {
+  if (e.text === LONG_TEXT) return true // checked separately below: must be truncated, not present in full
   if (e.text === DANGEROUS_TEXT) {
-    return html.includes('&lt;script&gt;alert(1)&lt;/script&gt;') && html.includes('&quot;quote&quot;')
+    return svg.includes('&lt;script&gt;alert(1)&lt;/script&gt;') && svg.includes('&quot;quote&quot;')
   }
-  return html.includes(e.text)
+  return svg.includes(e.text)
 }))
-check('contains no raw <script>', !html.includes('<script>'))
+
+check('a 300-character entry is truncated with …', !svg.includes(LONG_TEXT) && svg.includes('…'))
+
+check('contains no <script', !svg.includes('<script'))
+check('contains no onload/onclick', !/\bon(load|click)\s*=/i.test(svg))
+check('contains no foreignObject', !svg.includes('foreignObject'))
+
 check(`under 4096 bytes UTF-8 (was ${bytes})`, bytes < 4096)
 
 const passed = results.every(Boolean)

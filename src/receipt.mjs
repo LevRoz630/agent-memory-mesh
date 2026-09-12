@@ -1,12 +1,25 @@
-// Public, human-readable "incident receipt": a self-contained HTML page published to Swarm as a
-// /bzz manifest (src/swarm.mjs's uploadPublicFile) so judges can open it in a browser without
-// downloading anything. Contains nothing sensitive: the referenced Swarm report stays encrypted
-// to the incident roster, and this page only ever shows its reference, not its contents.
+// Public, human-readable "incident receipt": a self-contained SVG published to Swarm as a /bzz
+// manifest (src/swarm.mjs's uploadPublicFile) so judges can open it in a browser without
+// downloading anything. SVG, not HTML: the gateway's /bzz route 302s HTML to an approval page,
+// but serves application/json, text/markdown and image/svg+xml inline. Contains nothing
+// sensitive: the referenced Swarm report stays encrypted to the incident roster, and this page
+// only ever shows its reference, not its contents.
 
 const EXPLORER = 'https://tiramisu.explorer.arkiv.network'
 
+const WIDTH = 960
+const LINE_HEIGHT = 18
+const TOP_MARGIN = 34
+const BOTTOM_MARGIN = 20
+const LEFT_MARGIN = 20
+const MAX_LINE_CHARS = 100
+
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
-const url = (s) => esc(encodeURIComponent(String(s ?? '')))
+const url = (s) => encodeURIComponent(String(s ?? ''))
+
+function truncate(s) {
+  return s.length > MAX_LINE_CHARS ? `${s.slice(0, MAX_LINE_CHARS - 1)}…` : s
+}
 
 function resolvedBy(state) {
   const id = Object.keys(state.agents).find((agentId) => state.agents[agentId].status === 'done')
@@ -15,46 +28,40 @@ function resolvedBy(state) {
 
 export function renderReceipt(state) {
   const resolver = resolvedBy(state)
-  const outcome = resolver
-    ? `Resolved by <b>${esc(resolver)}</b>`
-    : `Phase: ${esc(state.phase)}`
+  const lines = []
 
-  const timelineItems = state.timeline.map((e) =>
-    `<li><time>${esc(new Date(e.at).toISOString())}</time> <b>${esc(e.agentId)}</b> ${esc(e.text)}</li>`
-  ).join('')
+  lines.push({ cls: 'title', text: 'Hydra incident receipt' })
+  lines.push({ cls: 'head', text: `Incident ${state.tag}` })
+  lines.push({ cls: 'head', text: resolver ? `Resolved by ${resolver}` : `Phase: ${state.phase}` })
+  lines.push({ cls: 'body', text: '' })
+
+  for (const e of state.timeline) {
+    const t = new Date(e.at).toISOString().slice(11, 19)
+    lines.push({ cls: 'body', text: truncate(`${t}  ${e.agentId}  ${e.text}`) })
+  }
+
+  lines.push({ cls: 'body', text: '' })
 
   const report = state.report
-  const reportLine = report
-    ? `<p>Encrypted report on Swarm: <span class="mono">${esc(report.swarmRef)}</span>. ` +
-      `It is encrypted to the incident's agent roster; this receipt contains nothing sensitive.</p>` +
-      `<p>Arkiv entity: <a href="${EXPLORER}/entity/${url(report.entityKey)}">${esc(report.entityKey)}</a></p>`
-    : ''
+  if (report) {
+    lines.push({ cls: 'body', text: truncate(`Arkiv entity ${report.entityKey}`), link: `${EXPLORER}/entity/${url(report.entityKey)}` })
+    lines.push({ cls: 'body', text: truncate(`Swarm ref ${report.swarmRef}`) })
+    lines.push({ cls: 'body', text: truncate('Encrypted to the incident’s agent roster; this receipt contains nothing sensitive.') })
+  }
 
-  return `<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<title>Hydra incident receipt</title>
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<style>
-body{font-family:-apple-system,system-ui,sans-serif;max-width:640px;margin:2rem auto;padding:0 1rem;line-height:1.4;color:#222;background:#fff}
-h1{font-size:1.3rem;margin:0 0 0.2rem}
-.tag{color:#666;font-size:0.9rem;margin-bottom:1rem}
-ul{list-style:none;padding:0;margin:0 0 1rem}
-li{padding:0.25rem 0;border-bottom:1px dashed #ccc;font-size:0.85rem}
-time{color:#666;margin-right:0.5rem;font-variant-numeric:tabular-nums}
-.mono{font-family:ui-monospace,monospace;font-size:0.85em;word-break:break-all}
-a{color:#0645ad}
-</style>
-</head>
-<body>
-<h1>Hydra incident receipt</h1>
-<div class="tag">Incident ${esc(state.tag)}</div>
-<p>${outcome}</p>
-<h2>Timeline</h2>
-<ul>${timelineItems}</ul>
-${reportLine}
-</body>
-</html>
+  const height = TOP_MARGIN + lines.length * LINE_HEIGHT + BOTTOM_MARGIN
+
+  const body = lines.map((line, i) => {
+    const y = TOP_MARGIN + i * LINE_HEIGHT
+    const textEl = `<text x="${LEFT_MARGIN}" y="${y}" class="${line.cls}">${esc(line.text)}</text>`
+    return line.link ? `<a href="${esc(line.link)}">${textEl}</a>` : textEl
+  }).join('')
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 ${WIDTH} ${height}" width="${WIDTH}" height="${height}">
+<style>text{font-family:ui-monospace,Consolas,monospace;fill:#222}.title{font-size:20px;font-weight:700}.head{font-size:13px}.body{font-size:12px}a text{fill:#0645ad}</style>
+<rect x="0" y="0" width="${WIDTH}" height="${height}" fill="#ffffff" stroke="#cccccc"/>
+${body}
+</svg>
 `
 }

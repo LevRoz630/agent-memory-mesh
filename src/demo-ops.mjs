@@ -52,6 +52,6 @@ export function createDemoOps(ctx) {
       return (await queryByTagAndType(ctx.pub, { tag, memoryType: 'done', limit: 1 })).length > 0
     },
 
-    publishReceipt: (state) => uploadPublicFile('receipt.html', 'text/html; charset=utf-8', Buffer.from(renderReceipt(state), 'utf8')),
+    publishReceipt: (state) => uploadPublicFile('receipt.svg', 'image/svg+xml', Buffer.from(renderReceipt(state), 'utf8')),
   }
 }
