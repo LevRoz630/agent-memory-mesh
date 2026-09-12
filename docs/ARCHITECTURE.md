@@ -175,7 +175,7 @@ else's postage batch, on a gateway whose documentation page is marked for deprec
 works, it is genuinely content-addressed, the content is genuinely encrypted before it
 leaves this process — and the durability of what we store is a third party's decision, not
 ours. That is the single largest gap between what exists and what the design implies, and
-§7 is mostly about closing it.
+§8 is mostly about closing it.
 
 ---
 
@@ -203,9 +203,9 @@ filesystem paths, so malformed JSON and oversized bodies are caught before that
 
 ---
 
-## 6. Uncommitted work in the tree
+## 6. Demo affordances
 
-Two changes are not yet committed, both aimed at the recorded demo:
+Two things exist for the recorded demo rather than for the design:
 
 - `src/app.mjs`: a `DEMO_MAX_TTL_BLOCKS` clamp applied to `memory_type: 'claim'`
   (`src/app.mjs:33-34, 52-53`). Rationale: the agent picks its own TTL, and a claim it
@@ -218,7 +218,152 @@ Two changes are not yet committed, both aimed at the recorded demo:
 
 ---
 
-## 7. How it ought to work — the parts that are design, not code
+## 7. The three-agent workflow
+
+This is the shape the project is being built toward. The wallets exist and are funded; the
+protocol below is designed and not yet implemented.
+
+### Why three and not two
+
+Two agents can show a hand-off. They cannot show *contention*, and contention is what makes
+an expiring lease worth anything. With a third agent, "Nova crashed" stops being a claim made
+by narration and becomes something visible: Sol picks the work up, and the only thing that
+let it do so was the lease lapsing on its own.
+
+| Agent | Role | Writes | Reads |
+| --- | --- | --- | --- |
+| `atlas` | monitoring — detects incidents, never fixes them | `event` incidents | nothing it needs to act on |
+| `nova` | remediation worker | `claim`, then `done` | open incidents, live claims |
+| `sol` | second remediation worker — identical to Nova | `claim`, then `done` | open incidents, live claims |
+
+Nova and Sol are the same program with different identities. That is the point: neither is
+special, and either can take work the other abandons.
+
+### Identity
+
+Four wallets. Three agents sign for themselves; the original key becomes the funder and signs
+nothing in the protocol.
+
+| Role | Env var | Address | Funded |
+| --- | --- | --- | --- |
+| funder | `ARKIV_PRIVATE_KEY` | `0x9F5997ecB905211a464F29090900468BDBa286C1` | 0.0486 GLM |
+| atlas | `ARKIV_PRIVATE_KEY_ATLAS` | `0xa3D849F993765d7B434E53f76Ab4Bd6e6C214215` | 0.05 GLM |
+| nova | `ARKIV_PRIVATE_KEY_NOVA` | `0x992c6b62B5E2C227204FB28FFB1e88693206Cfb0` | 0.05 GLM |
+| sol | `ARKIV_PRIVATE_KEY_SOL` | `0x7D75c4b534feC6c205245aF5A87A2A6Be9049d49` | 0.05 GLM |
+
+At the measured 0.000105 GLM per `createEntity`, 0.05 GLM is roughly 475 writes per agent.
+Keys live in `.env`, which is gitignored.
+
+Separate signers are what make the central claim true rather than rhetorical. Until now both
+agents shared one key, so every row had the same `owner` and `agent_id` was a string an agent
+asserted about itself. Verified live after funding — three agents writing concurrently, one
+entity each:
+
+```
+agent_id=atlas  owner=0xa3D849F993765d7B434E53f76Ab4Bd6e6C214215
+agent_id=nova   owner=0x992c6b62B5E2C227204FB28FFB1e88693206Cfb0
+agent_id=sol    owner=0x7D75c4b534feC6c205245aF5A87A2A6Be9049d49
+```
+
+`agent_id` and `owner` now agree, and `owner` is the one the engine enforces. Two consequences
+follow immediately:
+
+- **Nobody can release or renew anyone else's claim.** `extendEntity` and `deleteEntity` are
+  owner-gated (`src/arkiv.mjs:67-81`); a non-owner is rejected with
+  `entity 0x… is owned by 0x…, not 0x…`. So an abandoned claim cannot be cleaned up by a
+  peer — expiry is not the convenient mechanism, it is the *only* one.
+- **Each agent gets its own nonce sequence**, which is what made the concurrent funding and
+  the three writes above land together (`feedback.md` finding 3).
+
+### The three entity roles
+
+All three are ordinary `agent_memory` entities. The role is carried by `memory_type`; the tag
+says which piece of work it concerns.
+
+| Role | `memory_type` | `tag` | TTL | Written by |
+| --- | --- | --- | --- | --- |
+| incident | `event` | `incident-<id>` | 600 blocks | the reporting agent |
+| claim | `claim` | `incident-<id>` | 8 blocks, renewed while working | the working agent |
+| done | `done` | `incident-<id>` | 600 blocks | the finishing agent |
+
+All three share one tag per piece of work and differ only by type, so every query in the
+protocol is an equality match on two attributes. Nothing parses a built string.
+
+The asymmetry is the design: **claims clean themselves up, completions persist.** Expiry is
+the default, and survival is what costs effort.
+
+### The lifecycle
+
+```
+atlas                    nova                       sol
+  │                        │                          │
+  ├─ event/incident-42 ───►│                          │
+  │  (600 blocks)          │                          │
+  │                        ├─ query done/42  → none   │
+  │                        ├─ query claim/42 → none   │
+  │                        ├─ claim/42 (8 blocks) ───►│ query claim/42 → held, backs off
+  │                        │                          │
+  │                        ├─ extend every ~3 blocks  │
+  │                        ✗  process dies            │
+  │                           (no tx, no event)       │
+  │                        ╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌ │
+  │                        lease lapses at its block  │
+  │                                                   ├─ query claim/42 → none
+  │                                                   ├─ claim/42 ─────────────►
+  │                                                   ├─ done/42 (600 blocks)
+  │                                                   └─ delete its own claim
+```
+
+Reading it in order:
+
+1. **Atlas files the incident.** An `event` with a 600-block TTL: long enough to outlive
+   several claim attempts, short enough that the index does not accumulate forever.
+2. **A worker checks before claiming.** `done` first, then `claim`. Order matters — checking
+   the claim first and the completion second leaves a window where finished work gets redone.
+3. **The worker claims with a short lease.** 8 blocks, about 16 seconds. Deliberately far
+   shorter than the work takes.
+4. **It renews while working**, roughly every 3 blocks. A third of the lease, so two
+   consecutive failed renewals are survivable. Renewing at the full lease length makes every
+   renewal a photo finish and one slow RPC drops a lease that is being actively worked.
+5. **If it dies, nothing happens — and that is the mechanism.** No transaction, no event, no
+   cleanup job. The engine simply stops answering for that key at the expiry block.
+6. **The second worker takes over.** Its next poll finds no live claim and it claims for
+   itself.
+7. **On finishing: write `done` first, then delete the claim.** That order is load-bearing.
+   A crash between the two leaves the claim to lapse on its own, while the `done` record
+   already prevents the work being repeated.
+
+### The lapse is derived, never announced
+
+Arkiv emits `EntityCreated`, `EntityPatched`, `ExpiryExtended`, `OwnershipTransferred` and
+`EntityDeleted`. **There is no expiry event.** Expiry is passive: no transaction happens at
+the expiry block.
+
+So a watcher cannot wait to be told a lease broke. It holds `{entityKey → expiresAt}` from
+`EntityCreated`, updates it on each `ExpiryExtended`, drops it on `EntityDeleted`, and
+compares the rest against head. A lapse is head passing an expiry with no renewal having
+arrived. The chain never announces the broken lease; the watcher notices the silence.
+
+This is also why §3's point about `watchEntityEvents` carrying only
+`{ entityKey, owner, expiresAt }` matters more than it first appears — `expiresAt` on the
+creation event is the entire basis for knowing when a lease is due to die.
+
+### The race, stated honestly
+
+Query-then-write is not atomic and Arkiv has no compare-and-set, so two workers can both
+claim the same incident: both query in the block after a lapse, both find nothing, both
+write. The window is one block plus RPC latency.
+
+This is not fixed, and the reason is worth saying plainly to a mentor: **the lease is
+advisory, not exclusive** — the same guarantee etcd gives without fencing tokens. A
+deterministic tie-break (re-query, lowest `entityKey` wins, losers back off) closes genuine
+collisions in about twenty lines and no new primitive. It does not close the case of an agent
+that goes slow rather than dying, whose lease lapses while it is still working. Fixing that
+needs a resource that rejects stale writes, and there isn't one here.
+
+---
+
+## 8. Everything else that is design, not code
 
 Everything below is unbuilt. It is written down so mentors can push back on the shape before
 any of it costs a day.
@@ -257,32 +402,33 @@ expiring lease over it. This is cleaner, and it is also a larger change than it 
 feed updates need chunk signing, and the docs are explicit that doing it by hand "can involve
 a little data juggling and crypto magic."
 
-**One wallet, two agents.** Both agents write from the same `ARKIV_PRIVATE_KEY`
-(`server.mjs:13-19`), so `owner` is identical on every row and only the `agent_id` attribute
-distinguishes them — which means an agent's identity is self-asserted, not proven. Separate
-wallets per agent make `owner` meaningful and make the nonce-manager finding matter more, not
-less.
+**Per-agent signers — wallets funded, code not yet wired.** The three wallets in §7 exist and
+have written to the chain, but `server.mjs:13-19` still builds one client from
+`ARKIV_PRIVATE_KEY` and the write route takes `agentId` as a request field. Wiring this up
+means `makeClients` per agent and the server selecting the signer by `agentId` — at which
+point an agent can no longer write as another simply by asking.
 
-**Discovery.** Done — this was an `or` across `['atlas', 'nova']` and is now a single
-`eq(app, …)`. What remains open is that `app` is self-asserted like `agent_id`: anything can
-write the constant and appear in the index. Scoping the feed to a set of known owner
-addresses is the next step, and it depends on per-agent wallets below.
+**Scoping reads by owner.** `app` is self-asserted exactly like `agent_id` was: anything can
+write the constant and appear in the index. Now that the agent addresses are known and fixed,
+reads can be scoped to that set, and `app` drops back to being a convenience rather than a
+boundary.
 
 ---
 
-## 8. What to ask mentors
+## 9. What to ask mentors
 
 1. Does the public gateway support the ACT endpoints (`/grantee`, `swarm-act`)? If not,
    per-agent readable content needs our own Bee node, and that changes the demo's shape.
 2. Is anonymous upload through `api.gateway.ethswarm.org` something to depend on for a
    judged submission, or should we buy a batch before the deadline regardless of cost?
-3. Claims are now a `memory_type` the engine filters on, but an agent cannot renew or
-   release another agent's claim — `extendEntity` and `deleteEntity` are owner-gated
-   (`src/arkiv.mjs:67-81`), and both agents currently share one wallet. Is "lapsing is the
-   only way a claim frees up" the right constraint to present, or a limitation to fix?
-4. Feeds for mutable task state: worth the signing complexity inside the remaining time, or
+3. Now that each agent signs for itself, no agent can release or renew another's claim —
+   the engine gates both on ownership. Is "lapsing is the only way abandoned work frees up"
+   the strongest version of the argument, or does a mentor read it as a missing feature?
+4. The advisory-lease race (§7): present it as a stated limitation with a known fix, or
+   spend the twenty lines on the tie-break so the question never comes up?
+5. Feeds for mutable task state: worth the signing complexity inside the remaining time, or
    is "one entity per state change, expiring" the honest primitive to show?
-5. For the Arkiv feedback report — the four findings in `feedback.md` all reproduce. Is
+6. For the Arkiv feedback report — the four findings in `feedback.md` all reproduce. Is
    there a Swarm-side equivalent worth filing, given the gap between what Bee's spec
    requires (a postage batch) and what the public gateway accepts (no header at all)?
 
@@ -296,5 +442,6 @@ addresses is the next step, and it depends on per-agent wallets below.
 | A claim lapses with nothing watching | `node --env-file=.env scripts/watch-claim.mjs nova` |
 | All four Arkiv findings | `npm run feedback:repro` (exit 0 = reproduced) |
 | Gateway accepts unstamped uploads | the two `curl` commands in §4 |
+| Each agent signs as itself | the three addresses in §7, on any block explorer for Tiramisu |
 | SDK behaviours | the cited paths under `node_modules/@arkiv-network/sdk/src/` |
 | Bee endpoint contracts | `openapi/Swarm.yaml` in `ethersphere/bee`, line numbers as cited |
