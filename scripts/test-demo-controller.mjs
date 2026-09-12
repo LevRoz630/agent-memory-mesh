@@ -95,6 +95,35 @@ check('sol resumed where nova stopped', ops.steps.find((s) => s.agentId === 'sol
 check('timeline records the resume', state.timeline.some((e) => e.agentId === 'sol' && e.text.includes('resuming')))
 check('killing an unknown agent throws', (() => { try { demo.kill('mallory'); return false } catch { return true } })())
 
+console.log('\nscenario: restart mid-run\n')
+
+const ops2 = fakeOps({ leaseMs: 150 })
+const recordedTags = []
+const demo2 = createDemo({
+  ops: ops2,
+  onUpdate: (state) => recordedTags.push(state.tag),
+  timings: { stepMs: 60, retryMs: 20, startDelayMs: { nova: 0, sol: 40 } }
+})
+
+await demo2.start()
+const firstTag = demo2.getState().tag
+await waitFor(() => demo2.getState().agents.nova.status === 'working', 'nova to start working (restart test)')
+
+await demo2.start()
+const secondTag = demo2.getState().tag
+const secondStartTime = parseInt(secondTag.split('-')[1])
+const updateCountAtSecondStart = recordedTags.length
+
+await sleep(300)
+
+const state2 = demo2.getState()
+const updatesAfterRestart = recordedTags.slice(updateCountAtSecondStart)
+
+check('restart creates a new run', secondTag !== firstTag)
+check('restart revives every agent', state2.agents.atlas.alive && state2.agents.nova.alive && state2.agents.sol.alive)
+check('superseded run no longer emits', !updatesAfterRestart.some((tag) => tag === firstTag))
+check('second run timeline has no entries before second start', state2.timeline.every((e) => e.at >= secondStartTime))
+
 const passed = results.every(Boolean)
 console.log(`\nRESULT: ${passed ? 'passed' : 'FAILED'}`)
 process.exit(passed ? 0 : 1)
