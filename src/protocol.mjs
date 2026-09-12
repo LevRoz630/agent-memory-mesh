@@ -237,10 +237,10 @@ export async function finish(ctx, agentId, tag, entityKey, fixContent) {
   await deleteMemory(signer.wallet, { entityKey })
 }
 
-export async function verify(ctx, tag) {
+export async function verify(ctx, verifierAgentId, tag) {
   const { pub, signers } = ctx
-  const atlasSigner = signers.get('atlas')
-  if (!atlasSigner) throw new Error('no signer configured for agentId "atlas"')
+  const verifierSigner = signers.get(verifierAgentId)
+  if (!verifierSigner) throw new Error(`no signer configured for agentId "${verifierAgentId}"`)
   let doneRows = []
   let pollAttempt = 0
   while (doneRows.length === 0) {
@@ -257,8 +257,8 @@ export async function verify(ctx, tag) {
   const lanes = await takeOver(ctx, tag)
   const finisherLane = lanes.find((l) => l.ownerAddress.toLowerCase() === doneRow.owner.toLowerCase())
   const outcome = finisherLane?.latestContent?.kind === 'fix' ? 'fixed' : 'reopened'
-  await writeMemory(atlasSigner.wallet, {
-    agentId: 'atlas', memoryType: 'verdict', tag, importance: 5,
+  await writeMemory(verifierSigner.wallet, {
+    agentId: verifierAgentId, memoryType: 'verdict', tag, importance: 5,
     content: { reasoning: `checked ${doneRow.owner}'s lane, found a ${finisherLane?.latestContent?.kind ?? 'missing'} entry` },
     ttlBlocks: LONG_LIVED_BLOCKS, roster: AGENT_IDS, outcome,
   })

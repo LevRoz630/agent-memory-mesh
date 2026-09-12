@@ -58,7 +58,7 @@ async function workerLoop(agentId) {
 }
 
 async function atlasVerifies() {
-  const result = await verify(ctx, tag)
+  const result = await verify(ctx, 'atlas', tag)
   log('atlas', `verdict: ${result.outcome}`)
 }
 
