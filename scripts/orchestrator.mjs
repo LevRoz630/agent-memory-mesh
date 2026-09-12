@@ -39,7 +39,11 @@ async function workerLoop(agentId) {
   }
   log(agentId, `holds the claim (${claimed.entityKey.slice(0, 18)}…)`)
   let renewing = true
+  let renewalError = null
+  // Attach .catch() immediately, not after the sleep below — otherwise a rejection during the
+  // sleep window is an unhandled rejection that can crash the process before we ever await it.
   const renewalPromise = renewClaim(ctx, agentId, claimed.entityKey, undefined, () => renewing)
+    .catch((e) => { renewalError = e })
 
   // Simulated work: a real worker would diagnose and fix here. This orchestrator just
   // demonstrates the mechanism, so it pauses briefly then finishes.
@@ -47,6 +51,7 @@ async function workerLoop(agentId) {
 
   renewing = false
   await renewalPromise
+  if (renewalError) log(agentId, `renewal failed: ${renewalError.message}`)
   await finish(ctx, agentId, tag, claimed.entityKey, { note: `fixed by ${agentId}` })
   log(agentId, 'finished')
 }
