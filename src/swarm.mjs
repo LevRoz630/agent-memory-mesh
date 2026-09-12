@@ -189,9 +189,13 @@ export async function uploadMemory(content, roster = AGENT_IDS) {
   return chunk.address.toHex()
 }
 
-export async function downloadMemory(ref) {
+export async function downloadSealed(ref) {
   const { bee } = getSwarm()
   const chunk = await bee.chunk.download(ref, undefined, { timeout: FETCH_TIMEOUT_MS })
-  const plaintext = openForAnyAgent(Buffer.from(chunk).subarray(8))
+  return Buffer.from(chunk).subarray(8)
+}
+
+export async function downloadMemory(ref) {
+  const plaintext = openForAnyAgent(await downloadSealed(ref))
   return JSON.parse(plaintext.toString('utf8'))
 }
