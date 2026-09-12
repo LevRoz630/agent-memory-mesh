@@ -18,7 +18,7 @@ function run(cmd, args) {
 }
 
 function banner(title) {
-  console.log(`\n${'='.repeat(60)}\n${title}\n${'='.repeat(60)}`)
+  console.log(`\n${title}`)
 }
 
 async function checkServer() {

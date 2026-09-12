@@ -37,7 +37,7 @@ const rememberTool = betaTool({
     required: ['memoryType', 'tag', 'importance', 'content', 'ttlBlocks'],
   },
   run: async (args) => {
-    console.log(`  🔧 remember(${JSON.stringify(args)})`)
+    console.log(`  remember(${JSON.stringify(args)})`)
     const res = await fetch(`${BASE_URL}/api/memory`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -72,7 +72,7 @@ const recallTool = betaTool({
     required: ['agentId'],
   },
   run: async (args) => {
-    console.log(`  🔧 recall(${JSON.stringify(args)})`)
+    console.log(`  recall(${JSON.stringify(args)})`)
     const params = new URLSearchParams({ agentId: args.agentId })
     if (args.memoryType) params.set('memoryType', args.memoryType)
     if (args.minImportance !== undefined) params.set('minImportance', String(args.minImportance))

@@ -52,11 +52,9 @@ console.log()
 const after = await q()
 console.log(`\nAFTER expiry — same query returns ${after.length} row(s)`)
 
-console.log('\n' + '='.repeat(60))
 if (before.length > 0 && after.length === 0) {
-  console.log('PASS — entity left query results on its own. Expiry is the mechanism;')
+  console.log('\nPASS — entity left query results on its own. Expiry is the mechanism;')
   console.log('nothing in this script ever called deleteEntity.')
 } else {
-  console.log('UNEXPECTED — re-check expiry semantics before relying on this in the demo.')
+  console.log('\nUNEXPECTED — re-check expiry semantics before relying on this in the demo.')
 }
-console.log('='.repeat(60))
