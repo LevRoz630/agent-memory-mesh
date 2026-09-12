@@ -1,4 +1,4 @@
-// npm run demo — Atlas remembers, Nova recalls the same memory, a compound query, then the
+// npm run demo: Atlas remembers, Nova recalls the same memory, a compound query, then the
 // expiry demo. Needs `npm start` running in another terminal.
 
 import { spawn } from 'node:child_process'

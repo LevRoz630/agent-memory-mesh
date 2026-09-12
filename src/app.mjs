@@ -50,7 +50,7 @@ export function createApp({ pub, signers }) {
         return res.status(400).json({ error: 'ttlBlocks must be a positive integer' })
       }
       // The signer is chosen by agentId, so an entity's `owner` is the agent that wrote it.
-      // An unknown agent is refused rather than signed for by someone else.
+      // An unknown agent is refused instead of getting signed for by someone else.
       const signer = signers.get(agentId)
       if (!signer) {
         return res.status(400).json({ error: `no signer configured for agentId "${agentId}" — known: ${[...signers.keys()].join(', ')}` })

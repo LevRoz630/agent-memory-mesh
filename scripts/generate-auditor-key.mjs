@@ -1,7 +1,7 @@
 // One-off: generates the auditor identity used by scripts/audit-exporter.mjs. Run once, then
 // split the two halves: AUDITOR_PUBLIC_KEY goes into the writers' .env (atlas/nova/sol's process),
-// AUDITOR_PRIVATE_KEY goes ONLY to whoever runs the exporter — never both in the same .env, or
-// the "separate observer" is cosmetic rather than real.
+// AUDITOR_PRIVATE_KEY goes only to whoever runs the exporter. Never both in the same .env, or
+// the "separate observer" is cosmetic instead of real.
 //
 //   node scripts/generate-auditor-key.mjs
 

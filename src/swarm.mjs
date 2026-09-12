@@ -2,21 +2,21 @@
 // SwarmIdClient is an iframe-based browser passkey flow, unusable from a server, so this goes
 // through @ethersphere/bee-js against a gateway.
 //
-// Encryption is app-level (AES-256-GCM), so the gateway never sees plaintext and references are
-// 64 hex chars — the gateway's own Swarm-Encrypt header would make them 128.
+// Encryption is app-level (AES-256-GCM), so the gateway never sees plaintext, and references
+// stay 64 hex chars (the gateway's own Swarm-Encrypt header would make them 128).
 //
-// Keys come from each agent's own ARKIV_PRIVATE_KEY_<AGENT> — the same secp256k1 key that signs
-// their Arkiv transactions doubles as their Swarm decryption identity, wrapped per recipient via
+// Keys come from each agent's own ARKIV_PRIVATE_KEY_<AGENT>. The same secp256k1 key that signs
+// their Arkiv transactions doubles as their Swarm decryption identity, wrapped per recipient in
 // encryptForRoster/decryptWithKey below. There is no shared secret.
 //
-// Postage: uploads are stamped locally with our own batch, which is why this uses /chunks
-// rather than /bytes. Verified live against api.gateway.ethswarm.org:
-//   - POST /bytes with swarm-postage-stamp        -> 400, the proxy demands swarm-postage-batch-id
-//   - POST /bytes with swarm-postage-batch-id     -> 404 "batch with id not found"
-//   - POST /chunks with a signed envelope         -> 201, and a wrong signing key is rejected
-//     with "stamp signature is invalid", so the batch is genuinely being spent
-// A batch shared as a key is only usable this way: the node holds no stamp issuer for it, so
-// every chunk has to arrive already signed.
+// Postage: uploads are stamped locally with our own batch, which is why this uses /chunks and
+// not /bytes. Tested live against api.gateway.ethswarm.org:
+//   - POST /bytes with swarm-postage-stamp:       400, the proxy demands swarm-postage-batch-id
+//   - POST /bytes with swarm-postage-batch-id:    404 "batch with id not found"
+//   - POST /chunks with a signed envelope:        201, and a wrong signing key gets "stamp
+//     signature is invalid", so the batch is genuinely being spent
+// A batch shared as a key only works this way: the node holds no stamp issuer for it, so every
+// chunk has to arrive already signed.
 
 import { createCipheriv, createDecipheriv, randomBytes, createECDH, hkdfSync } from 'node:crypto'
 import { Bee, BatchId, PrivateKey, Stamper } from '@ethersphere/bee-js'
@@ -30,7 +30,7 @@ const FETCH_TIMEOUT_MS = 8000
 // single stamp covers exactly one chunk, so anything larger needs splitting and a stamp each.
 const MAX_BLOB_BYTES = 4096
 
-// One shared ephemeral keypair per memory, wrapped per recipient — cheaper than a fresh
+// One shared ephemeral keypair per memory, wrapped per recipient. Cheaper than a fresh
 // ephemeral key per recipient, and standard multi-recipient ECIES practice.
 const WRAP_KEY_LEN = 32
 const EPHEMERAL_PUBKEY_LEN = 33 // compressed secp256k1 point
@@ -44,10 +44,11 @@ export function derivePublicKey(privateKeyBuffer) {
   return ecdh.getPublicKey(null, 'compressed')
 }
 
-// Raw ECDH output is not a key — HKDF is what makes this ECIES rather than "computeSecret and
-// hope". `info` binds the derived key to which agent slot it's wrapping AND to the ephemeral
-// public key for this memory, so two recipients never derive the same wrap key even if
-// (hypothetically) they shared a public key, and a wrap key can never be reused across memories.
+// Raw ECDH output is not a key on its own. HKDF is what makes this ECIES instead of just
+// "computeSecret and hope". `info` binds the derived key to which agent slot it's wrapping and
+// to the ephemeral public key for this memory, so two recipients never derive the same wrap key
+// even if (hypothetically) they shared a public key, and a wrap key can never be reused across
+// memories.
 function deriveWrapKey(sharedSecret, agentIndex, ephemeralPub) {
   const info = Buffer.concat([Buffer.from([agentIndex]), ephemeralPub])
   return Buffer.from(hkdfSync('sha256', sharedSecret, Buffer.alloc(0), info, WRAP_KEY_LEN))
@@ -127,7 +128,7 @@ function agentPrivateKeyBuffer(agentId) {
 
 // The auditor is not an operational agent: it never signs an Arkiv transaction, so it isn't in
 // AGENT_IDS and doesn't take a slot in that array's index scheme. Reserved index 3, one past the
-// three agents, keeps its wrap entry structurally separate from decryptForAnyAgent's loop — a
+// three agents, keeps its wrap entry structurally separate from decryptForAnyAgent's loop. A
 // writer process that never sets AUDITOR_PUBLIC_KEY produces exactly the old 3-recipient blob.
 const AUDITOR_AGENT_INDEX = 3
 
@@ -154,7 +155,7 @@ let bee
 let stamper
 
 // The stamper tracks which slot of each bucket it has used, so it has to outlive a single
-// upload — a fresh one would hand out slot 0 twice and the second chunk in a bucket would
+// upload. A fresh one would hand out slot 0 twice, and the second chunk in a bucket would
 // carry a stamp the first already spent.
 export function getSwarm() {
   if (!bee) {
@@ -163,10 +164,10 @@ export function getSwarm() {
     if (!pk || !batchId) {
       throw new Error('set SWARM_SIGNER_KEY and SWARM_POSTAGE_BATCH_ID (the batch and the key that owns it) in the environment')
     }
-    // Depth 23 is the drive we were given (§4). It is not readable back from here — the
-    // gateway exposes no /stamps, and this node accepted stamps for every depth from 16 to 30,
-    // so it validates the signature but not the slot index. Depth decides only how many slots
-    // we believe each bucket has before refusing to reuse one.
+    // Depth 23 is the drive we were given (§4). It isn't readable back from here: the gateway
+    // exposes no /stamps, and this node accepted stamps for every depth from 16 to 30, so it
+    // validates the signature but not the slot index. Depth decides only how many slots we
+    // believe each bucket has before refusing to reuse one.
     const depth = Number(process.env.SWARM_BATCH_DEPTH ?? 23)
     bee = new Bee(GATEWAY)
     stamper = Stamper.fromBlank(new PrivateKey(pk), new BatchId(batchId), depth)
@@ -175,13 +176,13 @@ export function getSwarm() {
 }
 
 // Reusable by anything sealing content to the roster (uploadMemory here, src/lane.mjs's lane
-// payloads) — this is the recipient-building logic uploadMemory used to duplicate inline.
+// payloads). This is the recipient-building logic uploadMemory used to duplicate inline.
 //
 // If AUDITOR_PUBLIC_KEY is configured, every seal also wraps a copy of the content key for the
-// auditor — from only their public key, never a private key held by this process. That's what
-// makes "a single observer wallet with access to all logs" a real, separately-custodied identity
-// rather than a fourth name for a key this process already holds: the writer can grant the
-// auditor access without ever being able to decrypt anything as the auditor itself.
+// auditor, using only their public key and never a private key held by this process. That's
+// what makes "a single observer wallet with access to all logs" a real, separately-custodied
+// identity instead of just a fourth name for a key this process already holds: the writer can
+// grant the auditor access without ever being able to decrypt anything as the auditor itself.
 export function sealForRoster(plaintext, roster = AGENT_IDS) {
   const recipients = roster.map((agentId) => {
     const priv = agentPrivateKeyBuffer(agentId)

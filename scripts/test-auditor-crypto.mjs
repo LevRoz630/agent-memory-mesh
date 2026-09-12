@@ -1,5 +1,5 @@
-// Pure crypto round trip for the auditor's fourth roster slot. No network, no env vars needed —
-// sets AUDITOR_PUBLIC_KEY itself for the duration of the process.
+// Pure crypto round trip for the auditor's fourth roster slot. No network, no env vars needed:
+// it sets AUDITOR_PUBLIC_KEY itself for the duration of the process.
 //
 //   node scripts/test-auditor-crypto.mjs
 

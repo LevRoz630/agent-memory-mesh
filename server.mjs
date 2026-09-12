@@ -15,7 +15,7 @@ if (!privateKey) {
   process.exit(1)
 }
 
-// Reads need a client, not an identity — the funder key is only here to build one.
+// Reads need a client, not an identity. The funder key is only here to build one.
 const { pub, wsClient } = makeClients({ privateKey })
 
 const signers = makeAgentSigners()
