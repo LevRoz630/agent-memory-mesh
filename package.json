@@ -11,7 +11,13 @@
   "scripts": {
     "start": "node --env-file=.env server.mjs",
     "demo": "node --env-file=.env scripts/run-demo.mjs",
-    "feedback:repro": "node --env-file=.env scripts/feedback/run-all.mjs"
+    "demo:protocol": "node --env-file=.env scripts/orchestrator.mjs",
+    "feedback:repro": "node --env-file=.env scripts/feedback/run-all.mjs",
+    "verify:crypto": "node scripts/test-envelope-crypto.mjs",
+    "verify:envelope": "node --env-file=.env scripts/verify-envelope-live.mjs",
+    "verify:lane": "node --env-file=.env scripts/verify-lane.mjs",
+    "verify:takeover": "node --env-file=.env scripts/verify-takeover.mjs",
+    "verify:tie-break": "node --env-file=.env scripts/verify-tie-break.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.125.0",
