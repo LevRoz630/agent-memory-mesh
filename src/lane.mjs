@@ -1,5 +1,5 @@
 // Per-agent "lanes" on Swarm: an indexed feed at address hash(owner, topic, index), where
-// topic = hash('agent-memory-mesh/' + tag). Anyone holding a wallet address and the tag can
+// topic = hash('hydra/' + tag). Anyone holding a wallet address and the tag can
 // compute the address, but reading the content back also requires a roster private key — lane
 // payloads are sealed the same roster-scoped way memories are (src/swarm.mjs's sealForRoster/
 // openForAnyAgent). Only writing is further restricted, to that owner's slot specifically.
@@ -29,7 +29,7 @@ function socAddressFor(ownerHex, topic, index) {
 
 export async function writeToLane(agentPrivateKeyHex, ownerAddressHex, tag, index, content, roster = AGENT_IDS) {
   const { bee, stamper } = getSwarm()
-  const topic = Topic.fromString('agent-memory-mesh/' + tag)
+  const topic = Topic.fromString('hydra/' + tag)
   const address = socAddressFor(ownerAddressHex, topic, index)
   const payload = sealForRoster(Buffer.from(JSON.stringify(content), 'utf8'), roster)
   if (payload.length > MAX_LANE_PAYLOAD_BYTES) {
@@ -43,7 +43,7 @@ export async function writeToLane(agentPrivateKeyHex, ownerAddressHex, tag, inde
 
 export async function readLane(ownerAddressHex, tag, index) {
   const { bee } = getSwarm()
-  const topic = Topic.fromString('agent-memory-mesh/' + tag)
+  const topic = Topic.fromString('hydra/' + tag)
   const reader = bee.feed.makeReader(topic, ownerAddressHex)
   try {
     const { payload } = await reader.downloadPayload({ index })

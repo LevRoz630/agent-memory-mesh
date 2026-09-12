@@ -32,7 +32,7 @@ const ATTR = {
 
 // Written on every entity so the index can be selected as a whole — Arkiv rejects a
 // predicate-free query, and an OR across known agent ids does not survive a third agent.
-const APP = 'agent-memory-mesh'
+const APP = 'hydra'
 
 export const AGENT_IDS = ['atlas', 'nova', 'sol']
 
