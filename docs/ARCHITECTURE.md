@@ -250,10 +250,10 @@ Two things exist for the recorded demo rather than for the design:
 
 ## 7. The three-agent workflow
 
-This is the shape the project is being built toward. **Identity is built**: three funded
-wallets, and the server signs each write with the agent that asked for it. **The claim
-protocol is not** — the lifecycle below is designed, and nothing yet renews, completes or
-takes over a lease.
+This is the shape the project was built toward, and it's now built: three funded wallets, each
+signing its own writes, and the full claim lifecycle below — renewal, takeover, finishing, and
+verification — implemented in `src/protocol.mjs` and exercised end to end by
+`scripts/orchestrator.mjs`.
 
 ### Why three and not two
 
@@ -525,16 +525,19 @@ needs a resource that rejects stale writes, and there isn't one here.
 | Claim                                                       | Status                                                          |
 | ----------------------------------------------------------- | --------------------------------------------------------------- |
 | Per-agent lanes on one topic, written by separate wallets    | verified — nova and sol each wrote their own lane, same topic   |
-| A third party reads a lane from wallet address + topic alone | verified — read back with no key, index reported as `…0001`     |
+| A third party can compute a lane's address from wallet + topic alone, but reading the content back needs a roster key | verified — the address needs no key, decrypting what's at it does (§2) |
 | Lane history is recoverable after later updates exist        | verified — index 0 read back after index 1 was written          |
 | An unwritten lane is a clean signal, not an error            | verified — `404 Not Found`, distinguishable from a failure      |
 | Content chunks stamped with our own batch                    | verified — `/chunks` accepts a signed envelope, 25/25 uploads   |
 | Feed chunks stamped with our own batch                        | verified — the stamp must cover the single-owner-chunk address, `keccak(keccak(topic‖index)‖owner)`; stamping the payload's returns `400 chunk write error` |
 | The batch, not the gateway, pays for lane writes             | verified — a foreign signing key on the same feed write is rejected `400 chunk write error` |
+| The tie-break converges under real cross-block skew           | verified — `scripts/verify-tie-break.mjs`, including a staggered-start run |
+| A successor discovers a crashed worker's lane via `takeOver` | verified — `scripts/verify-takeover.mjs`                        |
+| The full lifecycle runs end to end against the live network  | verified — `scripts/orchestrator.mjs`, repeated runs             |
 
-Every mechanism §7 depends on is therefore verified against the live gateway with our own
-postage. What is not built is the protocol on top: nothing yet renews a lease, writes a `lane`
-row, takes over abandoned work, or issues a verdict.
+Every mechanism §7 depends on is verified against the live gateway with our own postage, and so
+is the protocol built on top of it: renewal, takeover, finishing, and verdict issuance are no
+longer designed-but-unbuilt — see the scripts above.
 
 ---
 
@@ -551,3 +554,69 @@ row, takes over abandoned work, or issues a verdict.
 | Each agent signs as itself                | the three addresses in §7, on any block explorer for Tiramisu       |
 | SDK behaviours                            | the cited paths under`node_modules/@arkiv-network/sdk/src/`        |
 | Bee endpoint contracts                    | `openapi/Swarm.yaml` in `ethersphere/bee`, line numbers as cited |
+| The tie-break converges, takeover works, the full lifecycle runs | `npm run verify:tie-break`, `npm run verify:takeover`, `npm run demo:protocol` |
+| The auditor decrypts independently of the three agents    | `npm run generate:auditor-key`, then `node scripts/audit-exporter.mjs` against a live write (§8) |
+
+---
+
+## 8. Audit export
+
+Nothing in this system retains data by default. `claim` rows expire in 12 blocks (24 seconds);
+every other Arkiv row expires in 600 blocks (20 minutes); the Swarm postage batch itself expires
+in days regardless of what Arkiv still points at. That's deliberate — expiry is the mechanism
+§3 is built around — but it means there is no later point at which "export everything" is
+possible. By the time someone asks for the audit trail, most of it is already gone.
+
+**Swarm has no bulk export, list, or enumeration API of any kind** — confirmed against
+`@ethersphere/bee-js`'s full surface (chunk, SOC, feed, and manifest methods) and against
+`swarm.snaha.net/docs/api/`. Every retrieval is by a reference you already hold; nothing indexes
+content back to a batch, an owner, or an app. A feed manifest (`createFeedManifest`) makes one
+*known* feed's latest update reachable by a stable URL — a resolver convenience, not a discovery
+mechanism, and it still requires knowing the owner and topic up front. Arkiv's own queries are
+the only thing that indexes anything here, and Arkiv's index is exactly as ephemeral as the rows
+in it.
+
+The only mechanism that actually works is **continuous export as the events happen**, not a pull
+run later: `scripts/audit-exporter.mjs` extends `watchMemories` (the same subscription
+`server.mjs` already runs) and, on every `EntityCreated`/`ExpiryExtended`/`EntityDeleted` for this
+app, immediately downloads and decrypts the referenced Swarm content and appends it to a durable
+local log — before either side has a chance to age out.
+
+### A separately-custodied auditor, not a fourth name for a key everyone already holds
+
+Decryption still needs a key: every memory and lane payload is sealed to a roster (§2), so an
+exporter with no key on that roster sees ciphertext it cannot open. The obvious shortcut — run
+the exporter with one of atlas/nova/sol's own keys, since the default roster already includes all
+three — works, but it's not a real audit boundary: it's the same single trust domain this
+deployment already has, wearing a different script's name.
+
+Instead, `sealForRoster` (`src/swarm.mjs`) accepts a fourth, optional recipient: if
+`AUDITOR_PUBLIC_KEY` is set, every seal wraps a copy of the content key for it, from the *public*
+key alone. The exporter takes only `AUDITOR_PRIVATE_KEY`, `openForAuditor` decrypts with it
+directly (no fallback to trying the agents' keys, unlike `openForAnyAgent`), and the exporter
+process never touches `ARKIV_PRIVATE_KEY_ATLAS/NOVA/SOL`, `SWARM_SIGNER_KEY`, or
+`SWARM_POSTAGE_BATCH_ID` — it can read and decrypt, but it cannot write to Arkiv or spend the
+postage batch. `scripts/generate-auditor-key.mjs` generates the pair and prints which half goes
+where.
+
+Verified live: a memory uploaded through the normal path, sealed to `[atlas, nova]` plus whatever
+the writer's `.env` configures, was decrypted afterward using *only* the auditor's private key —
+no agent key, no `.env` — against the real gateway.
+
+**What this does and doesn't buy, stated plainly, matching this project's existing pattern
+elsewhere in §7:**
+
+- It's real ECIES with a real, independently-generated keypair — not a shared password, and not
+  a key the writers can use to decrypt as the auditor.
+- It's not retroactive. Adding `AUDITOR_PUBLIC_KEY` only affects memories written afterward; past
+  incidents stay sealed to whoever was on the roster when they were written.
+- It's a single high-value key for full audit visibility. If it leaks, everything ever sealed to
+  it is exposed, and there's no revoking access to content already written — only to what gets
+  written next.
+- Real separation depends on where the private half actually lives. Generated fresh and handed
+  only to whoever runs the exporter, on a machine that never sees the agents' keys, this is
+  genuine defense in depth. Placed in the same `.env` as everything else, it's the same
+  single-process trust boundary this deployment already has, just with an extra name on it.
+- Arkiv's own metadata — who claimed what, when, and its full renew/release history — needs no
+  key at all. It's already public to anyone with an RPC connection; only the Swarm content is
+  gated.
