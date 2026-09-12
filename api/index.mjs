@@ -1,4 +1,4 @@
-// Vercel entrypoint, no websocket layer — see src/app.mjs. The clients live in module scope so
+// Vercel entrypoint, no websocket layer (see src/app.mjs). The clients live in module scope so
 // warm invocations reuse them.
 
 import { createApp } from '../src/app.mjs'

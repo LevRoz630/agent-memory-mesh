@@ -1,6 +1,6 @@
-// Runs atlas, nova, and sol as concurrent loops in one process, so they share one Swarm Stamper
-// (see Global Constraints in the implementation plan — splitting them into separate OS processes
-// would let each start every postage bucket at slot 0 on the same shared batch).
+// Runs atlas, nova, and sol as concurrent loops in one process, so they share one Swarm Stamper.
+// (See Global Constraints in the implementation plan: splitting them into separate OS processes
+// would let each start every postage bucket at slot 0 on the same shared batch.)
 //
 //   node --env-file=.env scripts/orchestrator.mjs <tag>
 //
@@ -41,7 +41,7 @@ async function workerLoop(agentId) {
   log(agentId, `holds the claim (${claimed.entityKey.slice(0, 18)}…)`)
   let renewing = true
   let renewalError = null
-  // Attach .catch() immediately, not after the sleep below — otherwise a rejection during the
+  // Attach .catch() immediately, not after the sleep below. Otherwise a rejection during the
   // sleep window is an unhandled rejection that can crash the process before we ever await it.
   const renewalPromise = renewClaim(ctx, agentId, claimed.entityKey, undefined, () => renewing)
     .catch((e) => { renewalError = e })

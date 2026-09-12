@@ -1,7 +1,7 @@
 // takeOver() is what makes "resume rather than restart" real: when a worker's claim lapses
 // (process died mid-diagnosis) but it already published lane content, a successor should find
-// that content instead of redoing the work. This simulates exactly that crash scenario — lane
-// content and a `lane` Arkiv row for nova on a fresh tag, deliberately with NO claim ever held —
+// that content instead of redoing the work. This simulates exactly that crash scenario (lane
+// content and a `lane` Arkiv row for nova on a fresh tag, deliberately with no claim ever held)
 // and confirms takeOver() discovers it.
 //
 //   node --env-file=.env scripts/verify-takeover.mjs
@@ -26,7 +26,7 @@ console.log('claim-takeover discovery\n')
 console.log(`  tag: ${tag}, "died mid-diagnosis" owner: ${nova.account.address}`)
 
 // Simulate nova crashing right after publishing a diagnosis, before ever taking a claim (or
-// after its claim already lapsed — takeOver() only looks at lane rows, not claim rows).
+// after its claim already lapsed; takeOver() only looks at lane rows, not claim rows).
 await writeToLane(agentPrivateKeyHex, nova.account.address, tag, 0, {
   kind: 'diagnosis', note: 'root cause: stale cache; nova died before writing a fix',
 })

@@ -1,6 +1,6 @@
 // The claim-takeover protocol state machine (ARCHITECTURE.md §7). Every write goes through
-// src/memory.mjs's writeMemory, never src/arkiv.mjs's createMemory directly — that guarantees
-// every entity this protocol writes has a real swarm_ref, never a placeholder.
+// src/memory.mjs's writeMemory, never src/arkiv.mjs's createMemory directly, so every entity
+// this protocol writes has a real swarm_ref instead of a placeholder.
 
 import { queryByTagAndType, extendMemory, deleteMemory, AGENT_IDS } from './arkiv.mjs'
 import { writeMemory } from './memory.mjs'
@@ -38,8 +38,8 @@ async function incidentIsSpokenFor(ctx, tag) {
   return claims.length > 0
 }
 
-// Lowest key wins. `rivals.length === 0` means our own just-written row is not even visible yet
-// to this query — that's indistinguishable from "we won", so it must NOT be read as a win; the
+// Lowest key wins. `rivals.length === 0` means our own just-written row isn't even visible yet
+// to this query, which is indistinguishable from "we won". It must NOT be read as a win: the
 // caller retries instead of assuming victory.
 function currentWinnerKey(rivals) {
   if (rivals.length === 0) return null
@@ -62,10 +62,11 @@ export async function tryClaim(ctx, agentId, tag, attempt = 0) {
 
   try {
     // Settle window: without waiting for both writers' claims to be visible, each can see only
-    // its own row and both conclude they won. A single settle-and-query round is not enough — a
-    // rival landing 1-2 blocks late can still slip in as the lower key after we've already
-    // declared ourselves the winner. So this does two confirmation rounds: only finalize
-    // {held: true} if we are still the lowest key one full block after we first believed we won.
+    // its own row and both conclude they won. A single settle-and-query round isn't enough,
+    // since a rival landing 1-2 blocks late can still slip in as the lower key after we've
+    // already declared ourselves the winner. So this does two confirmation rounds, and only
+    // finalizes {held: true} if we're still the lowest key one full block after we first
+    // believed we won.
     const receipt = await pub.waitForTransactionReceipt({ hash: written.txHash })
     const txBlock = receipt.blockNumber
 
@@ -106,8 +107,8 @@ export async function renewClaim(ctx, agentId, entityKey, leaseBlocks = CLAIM_LE
     try {
       await extendMemory(signer.wallet, { entityKey, ttlBlocks: leaseBlocks })
     } catch (e) {
-      // The engine rejects an extension that would not move the expiry later — that happens when
-      // this renewal landed extremely close behind a previous one. Treat it as a no-op, not a
+      // The engine rejects an extension that wouldn't move the expiry later. That happens when
+      // this renewal landed extremely close behind a previous one; treat it as a no-op, not a
       // dropped lease.
       if (!/expiry/i.test(e.message)) throw e
     }
@@ -123,8 +124,8 @@ export async function takeOver(ctx, tag) {
     let index = 0
     let latestContent = null
     let latestIndex = -1
-    // Walk from index 0 until a clean 404 — matches the discovery method ARCHITECTURE.md §7
-    // specifies; small counts expected at demo scale.
+    // Walk from index 0 until a clean 404, matching the discovery method ARCHITECTURE.md §7
+    // specifies. Small counts expected at demo scale.
     while (true) {
       const content = await readLane(ownerAddress, tag, index)
       if (content === null) break

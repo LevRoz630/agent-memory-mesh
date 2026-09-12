@@ -1,17 +1,17 @@
 // Per-agent "lanes" on Swarm: an indexed feed at address hash(owner, topic, index), where
-// topic = hash('hydra/' + tag). Anyone holding a wallet address and the tag can
-// compute the address, but reading the content back also requires a roster private key — lane
-// payloads are sealed the same roster-scoped way memories are (src/swarm.mjs's sealForRoster/
-// openForAnyAgent). Only writing is further restricted, to that owner's slot specifically.
-// See ARCHITECTURE.md §7 "The Swarm side: one lane per agent".
+// topic = hash('hydra/' + tag). Anyone holding a wallet address and the tag can compute the
+// address, but reading the content back also requires a roster private key. Lane payloads are
+// sealed the same roster-scoped way memories are (src/swarm.mjs's sealForRoster/openForAnyAgent).
+// Writing is further restricted to that owner's slot specifically. See ARCHITECTURE.md §7
+// "The Swarm side: one lane per agent".
 //
 // bee-js's package.json `exports` only allows importing its top-level entry point, and the plain
-// (non-rolling) Feed API there (`bee.feed.makeWriter/.makeReader`) computes the feed's SOC address
-// internally and only accepts a bare postage batch ID — which spends the gateway's postage, not
-// ours (see src/swarm.mjs's Stamper comment). So the SOC address is computed here, independently,
-// with @ethersphere/core-sdk's own primitives (a direct dependency, not a restricted subpath),
-// and stamped with the same Stamper src/swarm.mjs already holds before handing bee.feed the
-// resulting envelope in place of a batch ID.
+// (non-rolling) Feed API there (`bee.feed.makeWriter/.makeReader`) computes the feed's SOC
+// address internally and only accepts a bare postage batch ID, which spends the gateway's
+// postage, not ours (see src/swarm.mjs's Stamper comment). So the SOC address is computed here
+// independently, with @ethersphere/core-sdk's own primitives (a direct dependency, not a
+// restricted subpath), and stamped with the same Stamper src/swarm.mjs already holds, before
+// handing bee.feed the resulting envelope in place of a batch ID.
 
 import { Topic, FeedIndex, Identifier, EthAddress, Bytes, keccak256, makeSOCAddress } from '@ethersphere/core-sdk'
 import { getSwarm, sealForRoster, openForAnyAgent } from './swarm.mjs'
