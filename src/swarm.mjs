@@ -160,14 +160,24 @@ export function getSwarm() {
   return { bee, stamper }
 }
 
-export async function uploadMemory(content, roster = AGENT_IDS) {
-  const { bee, stamper } = getSwarm()
+// Reusable by anything sealing content to the roster (uploadMemory here, src/lane.mjs's lane
+// payloads) — this is the recipient-building logic uploadMemory used to duplicate inline.
+export function sealForRoster(plaintext, roster = AGENT_IDS) {
   const recipients = roster.map((agentId) => {
     const priv = agentPrivateKeyBuffer(agentId)
     if (!priv) throw new Error(`no key configured for roster agent "${agentId}" — set ARKIV_PRIVATE_KEY_${agentId.toUpperCase()}`)
     return { agentIndex: AGENT_IDS.indexOf(agentId), publicKey: derivePublicKey(priv) }
   })
-  const blob = encryptForRoster(Buffer.from(JSON.stringify(content), 'utf8'), recipients)
+  return encryptForRoster(plaintext, recipients)
+}
+
+export function openForAnyAgent(blob) {
+  return decryptForAnyAgent(blob)
+}
+
+export async function uploadMemory(content, roster = AGENT_IDS) {
+  const { bee, stamper } = getSwarm()
+  const blob = sealForRoster(Buffer.from(JSON.stringify(content), 'utf8'), roster)
   if (blob.length > MAX_BLOB_BYTES) {
     throw new Error(`encrypted content is ${blob.length} bytes; one stamped chunk holds ${MAX_BLOB_BYTES}`)
   }
@@ -180,6 +190,6 @@ export async function uploadMemory(content, roster = AGENT_IDS) {
 export async function downloadMemory(ref) {
   const { bee } = getSwarm()
   const chunk = await bee.chunk.download(ref, undefined, { timeout: FETCH_TIMEOUT_MS })
-  const plaintext = decryptForAnyAgent(Buffer.from(chunk).subarray(8))
+  const plaintext = openForAnyAgent(Buffer.from(chunk).subarray(8))
   return JSON.parse(plaintext.toString('utf8'))
 }

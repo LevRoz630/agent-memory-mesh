@@ -1,5 +1,5 @@
 // Per-agent "lanes" on Swarm: an indexed feed at address hash(owner, topic, index), where
-// topic = hash('agent-memory-mesh/' + tag). Anyone holding a wallet address and the tag can
+// topic = hash('hydra/' + tag). Anyone holding a wallet address and the tag can
 // compute the address and read it — no key needed for reading, only for writing at that owner's
 // slot. See ARCHITECTURE.md §7 "The Swarm side: one lane per agent".
 //
@@ -12,7 +12,8 @@
 // resulting envelope in place of a batch ID.
 
 import { Topic, FeedIndex, Identifier, EthAddress, Bytes, keccak256, makeSOCAddress } from '@ethersphere/core-sdk'
-import { getSwarm } from './swarm.mjs'
+import { getSwarm, sealForRoster, openForAnyAgent } from './swarm.mjs'
+import { AGENT_IDS } from './arkiv.mjs'
 
 const MAX_LANE_PAYLOAD_BYTES = 4096
 
@@ -24,11 +25,11 @@ function socAddressFor(ownerHex, topic, index) {
   return makeSOCAddress(identifier, owner)
 }
 
-export async function writeToLane(agentPrivateKeyHex, ownerAddressHex, tag, index, content) {
+export async function writeToLane(agentPrivateKeyHex, ownerAddressHex, tag, index, content, roster = AGENT_IDS) {
   const { bee, stamper } = getSwarm()
-  const topic = Topic.fromString('agent-memory-mesh/' + tag)
+  const topic = Topic.fromString('hydra/' + tag)
   const address = socAddressFor(ownerAddressHex, topic, index)
-  const payload = Buffer.from(JSON.stringify(content), 'utf8')
+  const payload = sealForRoster(Buffer.from(JSON.stringify(content), 'utf8'), roster)
   if (payload.length > MAX_LANE_PAYLOAD_BYTES) {
     throw new Error(`lane payload is ${payload.length} bytes; one stamped chunk holds ${MAX_LANE_PAYLOAD_BYTES}`)
   }
@@ -40,13 +41,20 @@ export async function writeToLane(agentPrivateKeyHex, ownerAddressHex, tag, inde
 
 export async function readLane(ownerAddressHex, tag, index) {
   const { bee } = getSwarm()
-  const topic = Topic.fromString('agent-memory-mesh/' + tag)
+  const topic = Topic.fromString('hydra/' + tag)
   const reader = bee.feed.makeReader(topic, ownerAddressHex)
   try {
     const { payload } = await reader.downloadPayload({ index })
-    return JSON.parse(Buffer.from(payload.toUint8Array()).toString('utf8'))
+    const plaintext = openForAnyAgent(Buffer.from(payload.toUint8Array()))
+    return JSON.parse(plaintext.toString('utf8'))
   } catch (e) {
     if (e?.status === 404) return null
     throw e
   }
+}
+
+export async function nextFreeLaneIndex(ownerAddressHex, tag) {
+  let index = 0
+  while ((await readLane(ownerAddressHex, tag, index)) !== null) index += 1
+  return index
 }
