@@ -122,13 +122,17 @@ export async function startHeartbeat(ctx, agentId, shouldContinue = () => true) 
   const signer = signers.get(agentId)
   if (!signer) throw new Error(`no signer configured for agentId "${agentId}"`)
   const tag = `agent-${agentId}`
-  await writeMemory(signer.wallet, {
+  const written = await writeMemory(signer.wallet, {
     agentId, memoryType: 'heartbeat', tag, importance: 1, content: {}, ttlBlocks: HEARTBEAT_LEASE_BLOCKS,
   })
+  // writeMemory returns on the tx hash, not the receipt, and a just-written row stays invisible to
+  // queries for a block or two (same lag currentWinnerKey documents). Anchoring the first wait to
+  // the write's own block keeps the first lookup below from reading that lag as "already down".
+  const receipt = await pub.waitForTransactionReceipt({ hash: written.txHash })
+  let anchor = receipt.blockNumber
   const renewEveryBlocks = Math.max(1, Math.floor(HEARTBEAT_LEASE_BLOCKS / 3))
   while (shouldContinue()) {
-    const start = await currentBlock(pub)
-    await waitForBlock(pub, start + BigInt(renewEveryBlocks))
+    await waitForBlock(pub, anchor + BigInt(renewEveryBlocks))
     if (!shouldContinue()) break
     const rows = await queryByTagAndType(pub, { tag, memoryType: 'heartbeat', limit: 1 })
     if (rows.length === 0) return // agent was already considered down elsewhere; stop renewing
@@ -137,6 +141,7 @@ export async function startHeartbeat(ctx, agentId, shouldContinue = () => true) 
     } catch (e) {
       if (!/expiry/i.test(e.message)) throw e
     }
+    anchor = await currentBlock(pub)
   }
 }
 

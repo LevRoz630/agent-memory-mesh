@@ -15,8 +15,9 @@ console.log('heartbeat renewal and lapse\n')
 let running = true
 const hb = startHeartbeat(ctx, 'nova', () => running)
 
-// Let it write and renew at least once.
-await new Promise((r) => setTimeout(r, 8000))
+// Wait past one full lease (~1.5 lease periods) so only a genuinely renewed row is still there.
+// A shorter wait would pass on the initial write's TTL alone, proving nothing about renewal.
+await new Promise((r) => setTimeout(r, HEARTBEAT_LEASE_BLOCKS * 1.5 * 2000))
 const tag = 'agent-nova'
 const alive = await queryByTagAndType(pub, { tag, memoryType: 'heartbeat', limit: 1 })
 console.log(`  heartbeat visible while running: ${alive.length === 1}`)
