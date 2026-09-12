@@ -38,7 +38,7 @@ if (!(await checkServer())) {
 const runTag = `demo-${Date.now().toString().slice(-6)}`
 
 try {
-  banner('1/4 — Atlas remembers (watch the mission-control panel)')
+  banner('1/4 — Atlas remembers')
   await run('node', [
     join(__dirname, 'agent-chat.mjs'), 'atlas',
     `Please remember that I prefer dark mode and 24-hour time as lasting preferences. ` +
@@ -47,7 +47,7 @@ try {
 
   await wait(2000)
 
-  banner('2/4 — Nova recalls (independent session, cross-agent)')
+  banner('2/4 — Nova recalls')
   await run('node', [
     join(__dirname, 'agent-chat.mjs'), 'nova',
     'The user just asked me about their display settings — do we know anything relevant?',
@@ -61,7 +61,7 @@ try {
   const rows = await (await fetch(`${BASE_URL}/api/query?${params}`)).json()
   console.log(`${rows.length} row(s):`)
   for (const r of rows) {
-    console.log(`  - [${r.attributes.tag}] ${JSON.stringify(r.content)} (importance ${r.attributes.importance}, expires block ${r.expiresAt})`)
+    console.log(`  - [${r.attributes.tag}] ${JSON.stringify(r.content)}`)
   }
 
   banner('4/4 — Mission 02: built to expire')

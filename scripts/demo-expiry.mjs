@@ -27,7 +27,7 @@ const result = await writeMemory(wallet, {
 })
 console.log(`written at block ${headBefore}`)
 console.log(`requested TTL: ${result.requestedTtlBlocks} blocks`)
-console.log(`applied expiry (from receipt): block ${result.appliedExpiresAt}`)
+console.log(`applied expiry: block ${result.appliedExpiresAt}`)
 console.log(`entity key: ${result.entityKey}`)
 console.log(`tx: ${result.txHash}\n`)
 
@@ -40,7 +40,7 @@ if (before.length === 0) {
   process.exit(1)
 }
 
-console.log('\nwaiting for the chain to pass the expiry block (no delete call is made)...')
+console.log('\nwaiting for the chain to pass the expiry block...')
 let headNow = headBefore
 while (headNow <= BigInt(result.appliedExpiresAt)) {
   await new Promise((r) => setTimeout(r, 3000))
