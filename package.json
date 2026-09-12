@@ -15,6 +15,7 @@
     "feedback:repro": "node --env-file=.env scripts/feedback/run-all.mjs",
     "verify:crypto": "node scripts/test-envelope-crypto.mjs",
     "verify:renew-stop": "node scripts/test-renew-stops.mjs",
+    "verify:demo-controller": "node scripts/test-demo-controller.mjs",
     "verify:envelope": "node --env-file=.env scripts/verify-envelope-live.mjs",
     "verify:lane": "node --env-file=.env scripts/verify-lane.mjs",
     "verify:takeover": "node --env-file=.env scripts/verify-takeover.mjs",
