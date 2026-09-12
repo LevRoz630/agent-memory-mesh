@@ -84,6 +84,12 @@ export function createDemo({ ops, onUpdate = () => {}, timings = {} }) {
       run.phase = 'resolved'
       setStatus(run, agentId, 'done')
       event(run, agentId, 'incident resolved')
+      const atlas = run.agents.atlas
+      if (!atlas.alive) {
+        atlas.alive = true
+        atlas.status = 'watching'
+        event(run, 'atlas', `${atlas.dc} back online, atlas is watching again`)
+      }
       return
     }
   }
