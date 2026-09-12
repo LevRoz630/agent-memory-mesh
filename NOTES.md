@@ -144,44 +144,60 @@ the brief.
 
 ## Component 2 — Swarm (content)
 
-**What it holds.** The actual memory content, encrypted, uploaded via the gateway. No Bee
-node run by this app — the app talks to a public gateway directly.
+Memory content, AES-256-GCM encrypted in-process, uploaded to a public gateway. No Bee node,
+no postage stamp. `src/swarm.mjs`.
 
-**Verified against the live gateway during pre-flight:** uploads with no batch header, an
-all-zero batch id, or a bogus batch id all return 201. A 1 MB round-trip is byte-identical.
-Identical content produces an identical reference — content addressing gives deduplication
-with no extra code.
+`@snaha/swarm-id` is not used: `SwarmIdClient` is iframe-based browser auth, which a server
+writing memories programmatically cannot drive. The plain gateway `fetch()` path is
+explicitly allowed by Swarm's bounty brief.
 
-**The one landmine to route around.** A plain content reference is 64 hex characters, fits
-a `bytes32`. An encrypted reference is 128 hex characters — exactly Arkiv's `MAX_STRING_BYTES`
-limit with zero headroom. `str("0x" + ref)` at 130 bytes throws `InvalidValueError`. Store
-the encrypted reference **without** the `0x` prefix.
+**Verified live.** Uploads with no batch header, an all-zero batch id, and a bogus batch id
+all return 201. 1 MB and 5 MB round-trips are byte-identical.
 
-**Why app-level encryption instead of `@snaha/swarm-id`.** `SwarmIdClient` is iframe-based
-browser auth (interactive passkey/connect flow) — no fit for a server writing memories
-programmatically. Using the plain gateway `fetch()` path instead, explicitly allowed by
-Swarm's own bounty brief. Encryption is app-level (AES-256-GCM), not Swarm's gateway-side
-`Swarm-Encrypt` header — the gateway never sees plaintext at all this way.
+The gateway stores ciphertext only — encryption happens before upload:
 
-**What this is not.** Durability is not guaranteed — the gateway sponsors its own postage,
-content may be garbage-collected. Confidentiality is gateway-side, not end-to-end — the
-gateway sees the plaintext before it encrypts. Both are fine for a demo, neither is a claim
-to make in the pitch.
+```js
+const ref = await uploadMemory({ canary: 'CANARY_12345' })
+const raw = Buffer.from(await (await fetch(`${GATEWAY}/bytes/${ref}`)).arrayBuffer())
+raw.toString('utf8').includes('CANARY_12345')  // false
+raw.length - JSON.stringify({ canary: 'CANARY_12345' }).length  // 28 = IV + authTag
+```
 
-**Confidentiality costs Swarm's own dedup.** `encrypt()` uses a fresh random IV per call
-(correct GCM practice), so identical plaintext produces a different ciphertext, and
-therefore a different Swarm reference, every time — confirmed live: two concurrent uploads
-of the same content returned two different refs. A deterministic IV would restore
-content-addressed dedup but leak that two memories are identical, which is the worse trade
-for a memory store. This build chose confidentiality; that's a limitation worth stating
-plainly, not a claim of dedup that no longer holds once encryption is layered on.
+**Encryption costs content-addressed dedup.** The raw gateway returns one reference for
+identical bytes. `encrypt()` draws a fresh random IV per call, so the app never uploads
+identical bytes twice:
 
-**No client-side fetch timeout.** `uploadMemory`/`downloadMemory` bound every call to 8s
-(`AbortSignal.timeout`) after live testing found the gateway can intermittently accept a
-connection and then stall for minutes — reproduced once as a 301-second hang on a batch of
-concurrent downloads, the exact fan-out pattern `/api/query` and `/api/recent` use. Without
-the timeout that stall would hang the whole HTTP response instead of failing per-entity as
-intended.
+```js
+const [a, b] = await Promise.all([uploadMemory({ x: 1 }), uploadMemory({ x: 1 })])
+a !== b  // true
+```
+
+A deterministic IV would restore dedup and leak which memories are identical.
+
+**Reference length.** A plain reference is 64 hex chars; an encrypted one (Swarm's own
+`Swarm-Encrypt` header) is 128 — exactly Arkiv's `MAX_STRING_BYTES`:
+
+```js
+str('a'.repeat(128))         // accepted
+str('0x' + 'a'.repeat(128))  // InvalidValueError: 130 UTF-8 bytes exceeds the 128-byte limit
+```
+
+Not hit in this build — app-level encryption yields plain 64-hex refs — but any switch to
+`Swarm-Encrypt` must store refs without the `0x` prefix.
+
+**8s timeout on both calls.** A bare `fetch()` against a server that accepts a connection and
+never responds stays pending indefinitely; `/api/query` and `/api/recent` fan out concurrent
+downloads via `Promise.all`, so one stalled connection hangs the whole response:
+
+```js
+const s = createServer(() => {})              // accepts, never responds
+process.env.SWARM_GATEWAY = `http://127.0.0.1:${s.address().port}`
+await downloadMemory('0'.repeat(64))          // TimeoutError at ~8001ms
+                                              // without the signal: still pending at 30s
+```
+
+**Untested:** retention. The gateway sponsors its own postage and may garbage-collect
+content; this build has not verified durability over time.
 
 ## Component 3 — ENS (identity)
 
