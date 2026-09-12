@@ -4,7 +4,7 @@
 
 import { queryByTagAndType, extendMemory, deleteMemory, AGENT_IDS } from './arkiv.mjs'
 import { writeMemory } from './memory.mjs'
-import { writeToLane, readLane } from './lane.mjs'
+import { writeToLane, readLane, nextFreeLaneIndex } from './lane.mjs'
 
 const CLAIM_LEASE_BLOCKS = 12 // long enough to fit a two-block settle window ahead of the first
                                // renewal at ~1/3 lease; see spec's B7 resolution
@@ -142,7 +142,8 @@ export async function finish(ctx, agentId, tag, entityKey, fixContent) {
   if (!signer) throw new Error(`no signer configured for agentId "${agentId}"`)
   const agentPrivateKeyHex = process.env[`ARKIV_PRIVATE_KEY_${agentId.toUpperCase()}`]
   if (!agentPrivateKeyHex) throw new Error(`no private key configured for agentId "${agentId}"`)
-  await writeToLane(agentPrivateKeyHex, signer.account.address, tag, 0, { kind: 'fix', ...fixContent })
+  const index = await nextFreeLaneIndex(signer.account.address, tag)
+  await writeToLane(agentPrivateKeyHex, signer.account.address, tag, index, { kind: 'fix', ...fixContent })
   await writeMemory(signer.wallet, {
     agentId, memoryType: 'lane', tag, importance: 5, content: { note: 'lane provenance marker' }, ttlBlocks: LONG_LIVED_BLOCKS,
   })
