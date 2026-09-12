@@ -18,18 +18,24 @@ to stop the work; neither is a party anyone has to trust with the incident's con
 
 ## What it actually does
 
-Atlas watches for incidents and never fixes them. Nova and Sol are identical remediation
-workers — neither is special, and that's the point: either can pick up what the other drops.
+Atlas, Nova, and Sol are identical peers — no fixed roles. Each runs the same three loops:
+renew its own heartbeat, watch its two peers' heartbeats for a lapse, and claim/work/verify
+incidents. Which one detects an outage, which one fixes it, and which one verifies is decided by
+who's alive and who acts first, not by identity.
 
-1. Atlas detects an incident and files it.
-2. Nova claims it — an 8-to-12-block lease, the shortest-lived thing in the system on purpose.
-3. Nova starts working and publishes its diagnosis to its own lane on Swarm: a per-agent,
-   append-only feed that survives Nova regardless of what happens to Nova next.
-4. Nova's process dies. Nothing notices. Nothing has to — the lease simply isn't renewed, and the
+1. Atlas detects an incident and files it, then claims it — an 8-to-12-block lease, the
+   shortest-lived thing in the system on purpose.
+2. Atlas starts working and publishes its diagnosis to its own lane on Swarm: a per-agent,
+   append-only feed that survives Atlas regardless of what happens to Atlas next.
+3. Atlas's process dies. Nothing notices. Nothing has to — the lease simply isn't renewed, and the
    chain stops answering for that claim at the block it was due to expire.
-5. Sol queries for open claims, finds none, reads Nova's lane, and resumes from Nova's diagnosis
-   instead of starting over. Sol finishes and publishes the fix.
-6. Atlas checks Sol's fix against the original signal and writes a verdict: fixed, or reopened.
+4. Nova queries for open claims, finds none, reads Atlas's lane, and resumes from Atlas's diagnosis
+   instead of starting over. Nova claims it, keeps working — and dies too, the same way.
+5. Sol finds no claim, reads both Atlas's and Nova's lanes, confirms both are actually dead (claim
+   lapsed and heartbeat lapsed, not just slow), resumes from Nova's latest state, and finishes the
+   fix.
+6. Sol can't grade its own work — `verify()` refuses to let a finisher verify itself. No verdict
+   is written until Atlas or Nova comes back online and checks Sol's fix.
 
 Every step above is a real write against a live testnet and a live Swarm gateway — nothing here
 is simulated in front of a mock. Two agents racing to claim the same incident resolve
