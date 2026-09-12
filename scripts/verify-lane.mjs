@@ -28,6 +28,16 @@ console.log(`  read back matches: ${matches}`)
 const stillUnwritten = await readLane(account.address, tag, 1)
 console.log(`  index 1 (never written) still reads null: ${stillUnwritten === null}`)
 
-const reproduced = unwritten === null && matches && stillUnwritten === null
+const address1 = await writeToLane(agentKey, account.address, tag, 1, { kind: 'fix', note: 'deployed cache-buster' })
+console.log(`  wrote index 1 at SOC address ${address1}`)
+
+const readBack1 = await readLane(account.address, tag, 1)
+const matches1 = readBack1?.kind === 'fix' && readBack1?.note === 'deployed cache-buster'
+console.log(`  read back index 1 matches: ${matches1}`)
+
+const distinctFromIndex0 = address1 !== address && JSON.stringify(readBack1) !== JSON.stringify(readBack)
+console.log(`  index 1 is distinct from index 0 (different address and content): ${distinctFromIndex0}`)
+
+const reproduced = unwritten === null && matches && stillUnwritten === null && matches1 && distinctFromIndex0
 console.log(`\nRESULT: ${reproduced ? 'passed' : 'FAILED'}`)
 process.exit(reproduced ? 0 : 1)
