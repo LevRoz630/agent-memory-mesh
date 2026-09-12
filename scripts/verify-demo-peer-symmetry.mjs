@@ -4,12 +4,16 @@
 //
 //   node --env-file=.env scripts/verify-demo-peer-symmetry.mjs nova
 //   node --env-file=.env scripts/verify-demo-peer-symmetry.mjs atlas
+//
+// `--early` pulls the plug while the seeded incident is still open, so the agent can only come back
+// through its own outage incident — never as a side effect of the seeded one resolving.
 
 import { makeClients, makeAgentSigners, queryByTagAndType, deleteMemory } from '../src/arkiv.mjs'
 import { createDemo } from '../src/demo.mjs'
 import { createDemoOps } from '../src/demo-ops.mjs'
 
 const victim = process.argv[2] ?? 'nova'
+const early = process.argv.includes('--early')
 const httpUrl = process.env.ARKIV_HTTP_URL
 const { pub } = makeClients({ privateKey: process.env.ARKIV_PRIVATE_KEY, httpUrl })
 const signers = makeAgentSigners({ httpUrl })
@@ -62,9 +66,10 @@ async function waitFor(cond, what, timeoutMs) {
 
 await demo.start()
 
-// Let the watch loops come up and the seeded incident play out before pulling the plug, so the
-// outage is the only thing in flight.
-await sleep(45000)
+// Normally the seeded incident is allowed to play out first, so the outage is the only thing in
+// flight. `--early` cuts power while it is still open, which is the case that used to bring the
+// victim back through the seeded incident's revival instead of through real detection.
+await sleep(early ? 8000 : 45000)
 console.log(`\n  --- cutting power to ${victim} ---`)
 demo.kill(victim)
 
@@ -116,6 +121,16 @@ check(`a peer detected the outage (${detector})`, detected && detector !== victi
 check(`a peer claimed and fixed it (${fixer})`, claimed && resolved && fixer !== victim)
 check(`a verdict was written (${verifier ?? 'n/a'}: ${verdicts[0]?.content?.outcome ?? 'see chain'})`, verified)
 check(`${victim} is back online`, backOnline)
+
+// The revival has to be a consequence of the outage incident, not of anything else resolving.
+const texts = state.timeline.map((e) => `${e.agentId}|${e.text}`)
+// Match the revival message, not WORK_STEPS' "confirm servers back online".
+const cameBackAt = texts.findIndex((x) => x.startsWith(`${victim}|`) && x.includes('is watching again'))
+const claimedAt = texts.findIndex((x) => x.includes(`claimed ${outageTag}`))
+check(
+  `${victim} came back only after its own outage was worked (claimed@${claimedAt}, back@${cameBackAt})`,
+  cameBackAt > -1 && claimedAt > -1 && cameBackAt > claimedAt,
+)
 
 const passed = results.every(Boolean)
 console.log(`\nRESULT: ${passed ? 'passed' : 'FAILED'}`)

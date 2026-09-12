@@ -7,23 +7,29 @@ import { createDemo, WORK_STEPS } from '../src/demo.mjs'
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
-function fakeOps({ leaseMs }) {
+function fakeOps({ leaseMs, verifyFails = false }) {
   const log = []
   const steps = []
-  let claim = null
-  let done = false
+  // Watch callbacks are kept so a test can fire an outage on demand, the way a real peer-watch loop
+  // would once a heartbeat lapses.
+  const watchers = new Map()
+  const claims = new Map()
+  const done = new Set()
   return {
     log,
     steps,
+    watchers,
     async startHeartbeat(agentId, shouldContinue) {
       log.push(['heartbeat-start', agentId])
       while (shouldContinue()) await sleep(5)
       log.push(['heartbeat-stop', agentId])
     },
-    watchForPeerOutages() {
-      return () => {}
+    watchForPeerOutages(agentId, onOutageDetected) {
+      watchers.set(agentId, onOutageDetected)
+      return () => watchers.delete(agentId)
     },
     async verify(agentId, tag) {
+      if (verifyFails) throw new Error('no signer configured')
       log.push(['verify', agentId, tag])
       return { outcome: 'fixed' }
     },
@@ -33,32 +39,35 @@ function fakeOps({ leaseMs }) {
     },
     async tryClaim(agentId, tag) {
       await sleep(5)
-      if (done) return { held: false }
-      if (claim && claim.expiresAt > Date.now()) return { held: false }
-      claim = { agentId, expiresAt: Date.now() + leaseMs }
-      log.push(['claim', agentId, Date.now()])
-      return { held: true, entityKey: `claim-${agentId}` }
+      if (done.has(tag)) return { held: false }
+      const held = claims.get(tag)
+      if (held && held.expiresAt > Date.now()) return { held: false }
+      claims.set(tag, { agentId, expiresAt: Date.now() + leaseMs })
+      log.push(['claim', agentId, Date.now(), tag])
+      return { held: true, entityKey: `claim-${agentId}-${tag}` }
     },
     async renewClaim(agentId, _entityKey, shouldContinue) {
       while (shouldContinue()) {
         await sleep(leaseMs / 3)
         if (!shouldContinue()) return
-        if (claim?.agentId === agentId) claim.expiresAt = Date.now() + leaseMs
+        for (const held of claims.values()) {
+          if (held.agentId === agentId) held.expiresAt = Date.now() + leaseMs
+        }
       }
     },
     async readProgress(tag) {
-      return steps.length
+      return steps.filter((s) => s.tag === tag).length
     },
     async recordStep(agentId, tag, step) {
-      steps.push({ agentId, step })
+      steps.push({ agentId, tag, step })
     },
     async finish(agentId, tag, entityKey) {
-      done = true
-      claim = null
-      log.push(['finish', agentId])
+      done.add(tag)
+      claims.delete(tag)
+      log.push(['finish', agentId, tag])
     },
     async isDone(tag) {
-      return done
+      return done.has(tag)
     },
   }
 }
@@ -80,7 +89,7 @@ const check = (name, ok) => {
 console.log('demo controller: kill, lapse, takeover, resume\n')
 
 const ops = fakeOps({ leaseMs: 150 })
-const demo = createDemo({ ops, timings: { stepMs: 60, retryMs: 20, verifyPollMs: 20, startDelayMs: { nova: 0, sol: 40 } } })
+const demo = createDemo({ ops, timings: { stepMs: 60, retryMs: 20, verifyPollMs: 20, watchStartDelayMs: 20, startDelayMs: { nova: 0, sol: 40 } } })
 
 await demo.start()
 check('report filed at start', ops.log.some((l) => l[0] === 'report'))
@@ -96,25 +105,56 @@ const killedAt = Date.now()
 const novaSteps = ops.steps.filter((s) => s.agentId === 'nova').length
 
 await waitFor(() => demo.getState().phase === 'resolved', 'the incident to resolve', 5000)
+await sleep(50)
 const state = demo.getState()
 const solClaim = ops.log.find((l) => l[0] === 'claim' && l[1] === 'sol')
+const mainSteps = ops.steps.filter((s) => s.tag === state.tag)
 
 check('sol finished the incident', state.agents.sol.status === 'done')
-check('DC-1 comes back online once its rack is recovered', state.agents.atlas.alive && state.agents.atlas.status === 'watching')
-check('timeline records DC-1 coming back', state.timeline.some((e) => e.agentId === 'atlas' && e.text.includes('back online')))
 check('DC-2 stays down', !state.agents.nova.alive)
 check('sol claimed only after nova went down', solClaim && solClaim[2] >= killedAt)
 check('dead nova never finished', !ops.log.some((l) => l[0] === 'finish' && l[1] === 'nova'))
-check('every step done exactly once, in order', JSON.stringify(ops.steps.map((s) => s.step)) === JSON.stringify(WORK_STEPS.map((_, i) => i)))
-check('sol resumed where nova stopped', ops.steps.find((s) => s.agentId === 'sol')?.step === novaSteps)
+check('every step done exactly once, in order', JSON.stringify(mainSteps.map((s) => s.step)) === JSON.stringify(WORK_STEPS.map((_, i) => i)))
+check('sol resumed where nova stopped', mainSteps.find((s) => s.agentId === 'sol')?.step === novaSteps)
 check('timeline records the resume', state.timeline.some((e) => e.agentId === 'sol' && e.text.includes('resuming')))
 check('killing an unknown agent throws', (() => { try { demo.kill('mallory'); return false } catch { return true } })())
 check('every agent runs a heartbeat', ['atlas', 'nova', 'sol'].every((id) => ops.log.some((l) => l[0] === 'heartbeat-start' && l[1] === id)))
 check('a killed agent stops beating', ops.log.some((l) => l[0] === 'heartbeat-stop' && l[1] === 'nova'))
+// The seeded incident is about a rack, not an agent: resolving it must not resurrect an agent that
+// went down for an unrelated reason and that no peer has filed an outage for yet.
+check('a killed agent is NOT revived by an unrelated incident resolving', !state.agents.atlas.alive)
 
-await waitFor(() => ops.log.some((l) => l[0] === 'verify'), 'someone to verify the resolved incident')
+console.log('\nscenario: a peer notices the silence and DC-1 comes back the honest way\n')
+
+ops.watchers.get('sol')('atlas', 'outage-atlas')
+await waitFor(() => demo.getState().agents.atlas.alive, 'the outage flow to bring atlas back', 5000)
+const recovered = demo.getState()
+
+check('a peer worked the outage incident', ops.log.some((l) => l[0] === 'finish' && l[1] === 'sol' && l[2] === 'outage-atlas'))
+check('the outage is tracked as its own incident', recovered.incidents['outage-atlas']?.phase === 'resolved')
+check('the seeded incident is untouched by the outage work', recovered.incidents[recovered.tag].stepsDone === WORK_STEPS.length)
+check('DC-1 comes back online once its own outage is fixed', recovered.agents.atlas.status === 'watching')
+check('timeline records DC-1 coming back', recovered.timeline.some((e) => e.agentId === 'atlas' && e.text.includes('back online')))
+
+await waitFor(() => ops.log.some((l) => l[0] === 'verify'), 'someone to verify a resolved incident')
 const verdict = ops.log.find((l) => l[0] === 'verify')
 check('the verdict is written by an agent other than the finisher', verdict[1] !== 'sol')
+
+console.log('\nscenario: a permanently failing verify gives up instead of logging forever\n')
+
+const opsF = fakeOps({ leaseMs: 150, verifyFails: true })
+const demoF = createDemo({ ops: opsF, timings: { stepMs: 20, retryMs: 20, verifyPollMs: 20, watchStartDelayMs: 20, startDelayMs: { nova: 0, sol: 40 } } })
+await demoF.start()
+await waitFor(() => demoF.getState().phase === 'resolved', 'the incident to resolve (verify-failure test)', 5000)
+const countVerifyEvents = () => demoF.getState().timeline.filter((e) => /verif/.test(e.text)).length
+await sleep(400)
+const afterFirstWait = countVerifyEvents()
+await sleep(600)
+const afterSecondWait = countVerifyEvents()
+
+check('a failing verify stops retrying', afterSecondWait === afterFirstWait)
+check('a failing verify logs a bounded number of events', afterSecondWait > 0 && afterSecondWait <= 4)
+check('the last word is that it gave up', demoF.getState().timeline.some((e) => e.text.includes('gave up verifying')))
 
 console.log('\nscenario: restart mid-run\n')
 

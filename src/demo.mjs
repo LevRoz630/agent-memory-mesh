@@ -26,6 +26,7 @@ const DEFAULT_TIMINGS = {
 }
 
 const OUTAGE_PREFIX = 'outage-'
+const MAX_VERIFY_ATTEMPTS = 5 // a few polls' worth of transient failure, not an unbounded retry
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
@@ -58,15 +59,16 @@ export function createDemo({ ops, onUpdate = () => {}, timings = {} }) {
     emit(run)
   }
 
+  // `subject` is the agent whose data center the incident is about, and only an outage incident has
+  // one: it is that peer's silence, so resolving it is what brings the peer back. The seeded
+  // incident is about a rack, not an agent — resolving it revives nobody, or a peer killed while it
+  // was still open would come back without any peer ever having noticed it was gone.
   function incidentFor(run, tag) {
-    if (!run.incidents[tag]) run.incidents[tag] = { tag, phase: 'running', stepsDone: 0 }
+    if (!run.incidents[tag]) {
+      const subject = tag.startsWith(OUTAGE_PREFIX) ? tag.slice(OUTAGE_PREFIX.length) : null
+      run.incidents[tag] = { tag, subject, phase: 'running', stepsDone: 0 }
+    }
     return run.incidents[tag]
-  }
-
-  // An `outage-<id>` incident is that agent's data center being down; the seeded rack incident sits
-  // in atlas's data center.
-  function recoveredAgentIdFor(run, tag) {
-    return tag.startsWith(OUTAGE_PREFIX) ? tag.slice(OUTAGE_PREFIX.length) : 'atlas'
   }
 
   function isLive(run, agentId) {
@@ -125,9 +127,8 @@ export function createDemo({ ops, onUpdate = () => {}, timings = {} }) {
       if (tag === run.tag) run.phase = 'resolved'
       setStatus(run, agentId, 'done')
       event(run, agentId, `${tag} resolved`)
-      const recoveredId = recoveredAgentIdFor(run, tag)
-      const recovered = run.agents[recoveredId]
-      if (recovered && !recovered.alive) revive(run, ctl, recoveredId)
+      const { subject } = incident
+      if (subject && run.agents[subject] && !run.agents[subject].alive) revive(run, ctl, subject)
       return
     }
   }
@@ -162,8 +163,18 @@ export function createDemo({ ops, onUpdate = () => {}, timings = {} }) {
           if (tag === run.tag) run.verdict = outcome
           event(run, agentId, `verified ${tag}: ${outcome}`)
         } catch (e) {
+          // A permanently broken verify (missing signer, chain down) must not push one timeline
+          // entry every poll forever: `state.timeline` is cloned on every getState() and this
+          // controller backs a long-lived server. Retry a transient failure a few times, log the
+          // first and the last, then leave the tag marked so no agent picks it up again.
+          const attempts = (ctl.verifyFailures.get(tag) ?? 0) + 1
+          ctl.verifyFailures.set(tag, attempts)
+          if (attempts >= MAX_VERIFY_ATTEMPTS) {
+            event(run, agentId, `gave up verifying ${tag} after ${attempts} attempts: ${e.message}`)
+            continue
+          }
           ctl.verified.delete(tag)
-          event(run, agentId, `verification of ${tag} failed: ${e.message}`)
+          if (attempts === 1) event(run, agentId, `verification of ${tag} failed, retrying: ${e.message}`)
         }
       }
     }
@@ -218,7 +229,7 @@ export function createDemo({ ops, onUpdate = () => {}, timings = {} }) {
     stopAllWatches()
     const run = { tag: `incident-${Date.now()}`, phase: 'running', report: null, stepsDone: 0, agents: freshAgents(), timeline: [], incidents: {} }
     state = run
-    const ctl = { stopWatch: {}, working: new Set(), verified: new Set(), finishedBy: {} }
+    const ctl = { stopWatch: {}, working: new Set(), verified: new Set(), verifyFailures: new Map(), finishedBy: {} }
     control = ctl
     setStatus(run, 'atlas', 'watching')
     event(run, 'atlas', `rack R12 in ${DATA_CENTERS.atlas} stopped responding`)
