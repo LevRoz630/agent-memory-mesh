@@ -39,7 +39,7 @@ Judging weights, and where each one is earned:
 Clip 0
 
 Hey, I'm Lev, and I built a memory layer for agents that don't share infrastructure with each
-other, on top of Arkiv, Swarm and ENS.
+other, on top of Arkiv and Swarm.
 
 ## Clip 1, 0:00 to 0:36, why Web3 / Arkiv
 
@@ -101,10 +101,6 @@ Beat 4. Said over the expiry output, still on screen.
 ## Clip 3, 2:12 to 2:40, who it's for
 
 Show: the public deployment at `agent-memory-mesh.vercel.app`, then the repo.
-
-Overlay, three seconds: `atlas-ethrome26.eth · nova-ethrome26.eth · ENSv2 beta, Sepolia`
-with both registration transaction hashes. ENS gets no spoken words, so this card is where
-it earns its place.
 
 Say:
 
