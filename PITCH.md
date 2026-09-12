@@ -20,16 +20,24 @@ answers the third.
 ### 2. Technical execution — 25% — the live demo
 
 Beats (full script in `NOTES.md`):
-1. Agent A writes a memory on camera — encrypt → Swarm → Arkiv, `$expiresAt` set.
-2. Agent B's panel updates with no refresh (Mission 03).
-3. Compound query live: `agent_id = X AND memory_type = Y AND importance >= N`.
-4. Short-lived memory disappears from that same query, no delete call in the code shown
+0. Terminal on one side, mission-control page open on the other. `npm run agent -- atlas
+   "remember that I prefer dark mode and 24-hour time"` — a real Claude session decides
+   to call `remember`, the panel's live feed and event log update on the real websocket
+   as it happens. This is the beat that answers "does an actual agent use this" — not
+   asserted, shown: a model deciding to call a tool, not a human clicking a button.
+1. Fresh process: `npm run agent -- nova "..."` — Nova's independent session decides to
+   query `agentId: atlas` and recalls what Atlas just stored — cross-agent, cross-session,
+   proving the "portable memory" claim rather than stating it.
+2. Compound query live in the browser: `agent_id = X AND memory_type = Y AND importance
+   >= N`.
+3. Short-lived memory disappears from that same query, no delete call in the code shown
    (Mission 02) — show requested vs. applied expiry from the receipt.
-5. One irrelevant event that does *not* update Agent B's panel — proves the filter is real.
+4. One irrelevant event that does *not* update the live panel — proves the filter is real.
 
-- [ ] decide: two browser tabs side by side, or two separate windows/screens?
-- [ ] pre-write one "boring" memory before recording so the write form isn't empty on camera
-- Target: ~90–100s
+- [ ] decide: two browser tabs side by side, or two separate windows/screens for the
+      browser-driven beats?
+- [ ] rehearse the agent commands once beforehand — model wording varies run to run
+- Target: ~90–110s
 
 ### 3. Usefulness and adoption potential — 20% — currently the weakest section, nail this
 
@@ -64,9 +72,9 @@ Draft answer (from working session, needs a read-through before it's final):
 
 | Section | Target |
 |---|---|
-| Why Arkiv | 0:00–0:30 |
-| Technical demo | 0:30–2:10 |
-| Usefulness/adoption | 2:10–2:40 |
+| Why Arkiv | 0:00–0:25 |
+| Technical demo (now includes the agent beats) | 0:25–2:15 |
+| Usefulness/adoption | 2:15–2:40 |
 | Arkiv feedback | 2:40–3:00 |
 
 ## Open items

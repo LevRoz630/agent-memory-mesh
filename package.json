@@ -7,15 +7,17 @@
   "description": "Agent memory as identity (ENSv2) + content (Swarm) + expiring index (Arkiv) — ETHRome 2026",
   "scripts": {
     "start": "node --env-file=.env server.mjs",
+    "agent": "node --env-file=.env scripts/agent-chat.mjs",
     "demo:expiry": "node --env-file=.env scripts/demo-expiry.mjs",
     "feedback:repro": "node --env-file=.env scripts/feedback/run-all.mjs",
     "ens:register": "node --env-file=.env scripts/ens-register.mjs",
     "ens:set-text": "node --env-file=.env scripts/ens-set-text.mjs"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.125.0",
     "@arkiv-network/sdk": "^0.8.0",
+    "express": "^4.21.0",
     "viem": "^2.56.3",
-    "ws": "^8.21.3",
-    "express": "^4.21.0"
+    "ws": "^8.21.3"
   }
 }

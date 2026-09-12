@@ -77,6 +77,27 @@ EXPIRY
   querying the same filter before and after the boundary returns a different row count
 ```
 
+## Real-agent proof, not a human-driven form
+
+The browser UI (write form + live feed) proves the Arkiv/Swarm/ENS plumbing works, but a
+human clicking "write memory" doesn't prove an actual AI agent would use it — that's a
+different, more important claim. `scripts/agent-chat.mjs` proves it directly: it gives a
+real Claude session two tools, `remember` and `recall`, wired to the exact same
+`/api/memory` and `/api/query` endpoints the browser uses, and lets the model decide when
+to call them — no scripted logic deciding on its own.
+
+Run live: `npm run agent -- atlas "remember that I prefer dark mode and 24-hour time"`
+had Atlas's session split that into two separate `remember` calls on its own (one per
+preference), each with its own tag and a self-chosen long `ttlBlocks` for a durable
+preference. A second, fully independent process, `npm run agent -- nova "..."`, had
+Nova's session first check its own agent id (nothing), then reason its way to querying
+`agentId: atlas` instead, retrieve both preferences, and answer correctly — proving
+cross-agent, cross-session portability, not cross-tab. The server's real
+`watchEntityEvents` watcher logged both writes as they happened (`live: agent_memory
+written by 0x9F59...`), meaning the mission-control page picks these up over the same
+live websocket whether the write came from the browser form or from an agent's own
+decision.
+
 ## Component 1 — Arkiv (index)
 
 **What it holds.** Metadata only: which agent, what kind of memory, a tag, a numeric

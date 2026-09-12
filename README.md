@@ -61,6 +61,10 @@ the actual Mission 03 artifact; see `NOTES.md` for a recorded proof.
 - `npm run ens:set-text -- <label> "<text>"` (`scripts/ens-set-text.mjs`) — attempts a
   profile text record on a registered name. Blocked by a real `PublicResolverV2`
   limitation; see `NOTES.md`.
+- `npm run agent -- <atlas|nova> "<message>"` (`scripts/agent-chat.mjs`) — talks to the
+  mesh through a real Claude session with `remember`/`recall` tools, instead of a human
+  filling out the write form. Needs `npm start` running in another terminal and
+  `ANTHROPIC_API_KEY` set; see `NOTES.md`.
 
 ## Deploy
 
