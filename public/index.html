@@ -32,6 +32,8 @@
   th, td { text-align: left; padding: 0.4rem; border-bottom: 1px solid #8883; vertical-align: top; }
   th { color: #888; font-weight: 500; }
   .content { max-width: 220px; word-break: break-word; }
+  .content.failed, .warn { color: #e67e22; }
+  .content.failed { font-style: italic; }
   .live-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #888; margin-right: 0.4rem; }
   .live-dot.on { background: #2ecc71; }
   code, .mono { font-size: 0.8em; font-family: ui-monospace, monospace; }
@@ -69,6 +71,7 @@
           <option>fact</option>
           <option>task</option>
           <option>event</option>
+          <option>claim</option>
         </select>
       </div>
     </div>
@@ -110,14 +113,20 @@
 const $ = (id) => document.getElementById(id)
 const SWARM_GATEWAY = 'https://api.gateway.ethswarm.org'
 const EXPLORER = 'https://tiramisu.explorer.arkiv.network'
-const short = (s) => s ? s.slice(0, 10) + '…' : ''
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
+// Only ever interpolated into logLine's innerHTML, and its inputs come off-chain, so it escapes.
+const short = (s) => s ? esc(String(s).slice(0, 10)) + '…' : ''
+
+// Every value here is attacker-controlled: swarm_ref is a chain attribute and anyone can write
+// an entity claiming any agent_id. Escape after URL-encoding, or a crafted attribute breaks out
+// of the href and executes in every viewer's feed.
+const url = (s) => esc(encodeURIComponent(String(s ?? '')))
 
 function proofLinks({ key, owner, swarmRef }) {
   const parts = []
-  if (key) parts.push(`<a class="proof mono" target="_blank" href="${EXPLORER}/entity/${key}">key ↗</a>`)
-  if (owner) parts.push(`<a class="proof mono" target="_blank" href="${EXPLORER}/address/${owner}">owner ↗</a>`)
-  if (swarmRef) parts.push(`<a class="proof mono" target="_blank" href="${SWARM_GATEWAY}/bytes/${swarmRef}">swarm ↗</a>`)
+  if (key) parts.push(`<a class="proof mono" target="_blank" href="${EXPLORER}/entity/${url(key)}">key ↗</a>`)
+  if (owner) parts.push(`<a class="proof mono" target="_blank" href="${EXPLORER}/address/${url(owner)}">owner ↗</a>`)
+  if (swarmRef) parts.push(`<a class="proof mono" target="_blank" href="${SWARM_GATEWAY}/bytes/${url(swarmRef)}">swarm ↗</a>`)
   return parts.join('')
 }
 
@@ -131,9 +140,17 @@ function logLine(html, cls) {
 
 async function pollHead() {
   try {
-    const { head: h } = await (await fetch('/api/head')).json()
+    const res = await fetch('/api/head')
+    if (!res.ok) throw new Error(`/api/head → ${res.status}`)
+    const { head: h } = await res.json()
     $('head').textContent = `Tiramisu block: ${h}`
-  } catch {}
+    $('head').classList.remove('warn')
+  } catch (e) {
+    // Silently swallowing this made a deploy with no ARKIV_PRIVATE_KEY look like a working one
+    // with no traffic.
+    $('head').textContent = `Tiramisu block: unreachable (${e.message})`
+    $('head').classList.add('warn')
+  }
 }
 pollHead()
 setInterval(pollHead, 2000)
@@ -141,7 +158,7 @@ setInterval(pollHead, 2000)
 $('writeBtn').onclick = async () => {
   $('status').textContent = 'writing...'
   const agentId = $('agentId').value
-  logLine(`<b>${agentId}</b> → POST /api/memory`)
+  logLine(`<b>${esc(agentId)}</b> → POST /api/memory`)
   try {
     const body = {
       agentId,
@@ -154,20 +171,26 @@ $('writeBtn').onclick = async () => {
     const res = await fetch('/api/memory', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
     const data = await res.json()
     if (!res.ok) throw new Error(data.error || res.statusText)
+    const ttl = data.ttlClamped
+      ? `<span class="warn">requested ${esc(data.requestedTtlBlocks)} blocks, clamped to ${esc(data.appliedTtlBlocks)} by DEMO_MAX_TTL_BLOCKS</span>`
+      : `requested ${esc(data.requestedTtlBlocks)} blocks`
     $('status').innerHTML = `written: ${proofLinks({ key: data.entityKey, swarmRef: data.swarmRef })}` +
-      `<a class="proof mono" target="_blank" href="${EXPLORER}/tx/${data.txHash}">tx ↗</a>` +
-      `requested ${data.requestedTtlBlocks} blocks, applied expiry block ${data.appliedExpiresAt}`
+      `<a class="proof mono" target="_blank" href="${EXPLORER}/tx/${url(data.txHash)}">tx ↗</a>` +
+      `${ttl}, applied expiry block ${esc(data.appliedExpiresAt)}`
     logLine(`✓ entity created ${short(data.entityKey)}, applied expiry block ${data.appliedExpiresAt}`, 'phase-memory')
   } catch (e) {
     $('status').textContent = 'FAILED: ' + e.message
-    logLine(`✕ write failed: ${e.message}`, 'ignored')
+    logLine(`✕ write failed: ${esc(e.message)}`, 'ignored')
   }
 }
 
 function renderRow(a, content, proof) {
   const tr = document.createElement('tr')
-  const contentText = content?.error ? content.error : (content?.note ?? JSON.stringify(content))
-  tr.innerHTML = `<td>${esc(a.agent_id)}</td><td>${esc(a.memory_type)}</td><td>${esc(a.tag)}</td><td>${esc(a.importance)}</td><td class="content">${esc(contentText)}</td><td>${proof}</td>`
+  // A Swarm download failure must not render as an ordinary row, or a fully broken content leg
+  // still produces a full-looking feed.
+  const failed = Boolean(content?.error)
+  const contentText = failed ? content.error : (content?.note ?? JSON.stringify(content))
+  tr.innerHTML = `<td>${esc(a.agent_id)}</td><td>${esc(a.memory_type)}</td><td>${esc(a.tag)}</td><td>${esc(a.importance)}</td><td class="content${failed ? ' failed' : ''}">${esc(contentText)}</td><td>${proof}</td>`
   return tr
 }
 
@@ -213,6 +236,14 @@ try {
   ws.onerror = () => startPollingFallback()
   ws.onmessage = (ev) => {
     const msg = JSON.parse(ev.data)
+    // The chain subscription can die while our own socket to the server stays open. Without
+    // this the dot stays green and the fallback never fires — the page looks live and is dead.
+    if (msg.type === 'watch_error') {
+      logLine(`✕ chain subscription lost: ${esc(msg.message)} — falling back to polling`, 'ignored')
+      $('liveDot').classList.remove('on')
+      startPollingFallback()
+      return
+    }
     if (msg.type === 'log') {
       if (msg.phase === 'event') logLine(`⚡ EntityCreated event, owner ${short(msg.owner)}`)
       else if (msg.phase === 'ignored') logLine(`✕ ignored ${short(msg.entityKey)} (not agent_memory)`, 'ignored')

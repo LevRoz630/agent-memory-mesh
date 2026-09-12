@@ -26,7 +26,7 @@ try {
     ttlBlocks: TTL_BLOCKS,
   })
   console.log(`written at block ${headBefore}`)
-  console.log(`requested TTL: ${result.requestedTtlBlocks} blocks`)
+  console.log(`applied TTL: ${result.appliedTtlBlocks} blocks`)
   console.log(`applied expiry: block ${result.appliedExpiresAt}`)
   console.log(`entity key: ${result.entityKey}`)
   console.log(`tx: ${result.txHash}\n`)

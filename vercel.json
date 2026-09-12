@@ -1,5 +1,6 @@
 {
   "framework": null,
-  "rewrites": [{ "source": "/api/(.*)", "destination": "/api/index" }]
+  "outputDirectory": "public",
+  "rewrites": [{ "source": "/api/(.*)", "destination": "/api/index" }],
+  "functions": { "api/index.mjs": { "maxDuration": 60 } }
 }
-

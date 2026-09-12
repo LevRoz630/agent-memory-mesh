@@ -20,10 +20,12 @@ function banner(title) {
   console.log(`\n${title}`)
 }
 
+// A 500 from a dead chain connection is still an HTTP response, so this used to pass while
+// nothing worked.
 async function checkServer() {
   try {
-    await fetch(`${BASE_URL}/api/head`)
-    return true
+    const res = await fetch(`${BASE_URL}/api/head`)
+    return res.ok
   } catch {
     return false
   }
@@ -61,6 +63,11 @@ try {
   console.log(`${rows.length} row(s):`)
   for (const r of rows) {
     console.log(`  - [${r.attributes.tag}] ${JSON.stringify(r.content)}`)
+  }
+  // Zero rows means Atlas ignored the run tag, chose a different memory_type, or the memory
+  // already expired. Reporting that as a successful demo step hides all three.
+  if (rows.length === 0) {
+    throw new Error(`compound query returned 0 rows — the memory was never written as expected, or expired before step 3`)
   }
 
   banner('4/4 — Mission 02: built to expire')

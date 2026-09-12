@@ -3,10 +3,10 @@ import { createMemory } from './arkiv.mjs'
 
 export async function writeMemory(wallet, { agentId, memoryType, tag, importance, content, ttlBlocks }) {
   const swarmRef = await uploadMemory(content)
-  const { entityKey, txHash, requestedTtlBlocks, appliedExpiresAt } = await createMemory(wallet, {
+  const { entityKey, txHash, appliedTtlBlocks, appliedExpiresAt } = await createMemory(wallet, {
     agentId, memoryType, tag, importance, swarmRef, ttlBlocks,
   })
-  return { entityKey, txHash, swarmRef, requestedTtlBlocks, appliedExpiresAt }
+  return { entityKey, txHash, swarmRef, appliedTtlBlocks, appliedExpiresAt }
 }
 
 export async function readMemoryContent(attributes) {

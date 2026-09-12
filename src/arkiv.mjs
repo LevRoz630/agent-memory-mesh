@@ -15,18 +15,23 @@
 
 import { createPublicClient, createWalletClient, ExpirationTime, str, u64, stringToPayload } from '@arkiv-network/sdk'
 import { tiramisu } from '@arkiv-network/sdk/chains'
-import { and, eq, gte, or, startsWith } from '@arkiv-network/sdk/query'
+import { and, eq, gte, startsWith } from '@arkiv-network/sdk/query'
 import { http, webSocket } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import { nonceManager } from 'viem/nonce'
 
 const ATTR = {
+  app: 'app',
   agentId: 'agent_id',
   memoryType: 'memory_type',
   tag: 'tag',
   importance: 'importance',
   swarmRef: 'swarm_ref',
 }
+
+// Written on every entity so the index can be selected as a whole — Arkiv rejects a
+// predicate-free query, and an OR across known agent ids does not survive a third agent.
+const APP = 'agent-memory-mesh'
 
 export function makeClients({ privateKey, httpUrl, wsUrl }) {
   // Without nonceManager, concurrent createEntity calls from this wallet race on the same
@@ -48,6 +53,7 @@ export async function createMemory(wallet, { agentId, memoryType, tag, importanc
     payload: stringToPayload(''),
     contentType: 'application/octet-stream',
     attributes: {
+      [ATTR.app]: str(APP),
       [ATTR.agentId]: str(agentId),
       [ATTR.memoryType]: str(memoryType),
       [ATTR.tag]: str(tag),
@@ -55,7 +61,23 @@ export async function createMemory(wallet, { agentId, memoryType, tag, importanc
       [ATTR.swarmRef]: str(swarmRef),
     },
   })
-  return { entityKey, txHash, requestedTtlBlocks: ttlBlocks, appliedExpiresAt: expiresAt }
+  return { entityKey, txHash, appliedTtlBlocks: ttlBlocks, appliedExpiresAt: expiresAt }
+}
+
+// Both of these are gated on ownership by the engine — a non-owner is rejected with
+// "entity <key> is owned by <addr>, not <addr>". With one wallet per agent that means no agent
+// can renew or release another's claim, so lapsing is the only way an abandoned claim frees up.
+export async function extendMemory(wallet, { entityKey, ttlBlocks }) {
+  const { txHash, expiresAt } = await wallet.extendEntity({
+    entityKey,
+    expires: ExpirationTime.fromBlocks(ttlBlocks),
+  })
+  return { entityKey, txHash, appliedTtlBlocks: ttlBlocks, appliedExpiresAt: expiresAt }
+}
+
+export async function deleteMemory(wallet, { entityKey }) {
+  const { txHash } = await wallet.deleteEntity({ entityKey })
+  return { entityKey, txHash }
 }
 
 // Reads hand back typed wrappers ({ type: 'str', value: 'atlas' }), asymmetric with the
@@ -81,13 +103,16 @@ export async function queryMemories(pub, { agentId, memoryType, minImportance, t
   return runQuery(pub, pred, limit)
 }
 
-// Arkiv rejects a query with no predicate, so "recent" is an OR across known agent ids rather
-// than an unfiltered scan.
-export async function queryRecent(pub, { agentIds = ['atlas', 'nova'], limit = 20 } = {}) {
-  const pred = agentIds.length === 1
-    ? eq(ATTR.agentId, str(agentIds[0]))
-    : or(...agentIds.map((id) => eq(ATTR.agentId, str(id))))
-  return runQuery(pub, pred, limit)
+// Arkiv rejects a query with no predicate, and `app` is the one attribute every participant
+// writes — so this selects the whole index without enumerating who is on it.
+export async function queryRecent(pub, { limit = 20 } = {}) {
+  return runQuery(pub, eq(ATTR.app, str(APP)), limit)
+}
+
+// "Is anyone on this?" has to be answerable regardless of who wrote the claim, so it cannot go
+// through queryMemories, which is scoped to a single agent_id.
+export async function queryByTag(pub, { tag, limit = 20 }) {
+  return runQuery(pub, and(eq(ATTR.app, str(APP)), eq(ATTR.tag, str(tag))), limit)
 }
 
 // An EntityCreated event carries only { entityKey, owner, expiresAt }, so each one has to be
@@ -103,7 +128,7 @@ export function watchMemories(wsClient, pub, { onMemory, onEvent, onError }) {
       try {
         const entity = await pub.getEntity(entityKey)
         const raw = entity.attributes ?? {}
-        if (!(ATTR.agentId in raw)) {
+        if (raw[ATTR.app]?.value !== APP) {
           onEvent?.({ phase: 'ignored', entityKey })
           return
         }

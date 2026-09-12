@@ -36,26 +36,34 @@ function broadcast(msg) {
   }
 }
 
-watchMemories(wsClient, pub, {
-  onEvent: (e) => broadcast({ type: 'log', ...e }),
-  onMemory: async ({ entityKey, owner, expiresAt, attributes }) => {
-    let content = null
-    try {
-      content = await readMemoryContent(attributes)
-    } catch (e) {
-      content = { error: `content unavailable: ${e.message}` }
-    }
-    console.log(`live: agent_memory written by ${owner}, key=${entityKey}`)
-    broadcast({
-      type: 'memory', key: entityKey, owner, expiresAt: String(expiresAt),
-      attributes: serializeAttrs(attributes),
-      content,
-    })
-  },
-  onError: (err) => {
-    console.error('watch error:', err.message)
-    broadcast({ type: 'watch_error', message: err.message })
-  },
-})
+// viem's websocket transport reconnects the socket but does not restore the eth_subscribe
+// subscription behind it, so a dropped subscription stays dropped unless we re-arm it.
+let unwatch = null
+function startWatch() {
+  unwatch = watchMemories(wsClient, pub, {
+    onEvent: (e) => broadcast({ type: 'log', ...e }),
+    onMemory: async ({ entityKey, owner, expiresAt, attributes }) => {
+      let content = null
+      try {
+        content = await readMemoryContent(attributes)
+      } catch (e) {
+        content = { error: `content unavailable: ${e.message}` }
+      }
+      console.log(`live: agent_memory written by ${owner}, key=${entityKey}`)
+      broadcast({
+        type: 'memory', key: entityKey, owner, expiresAt: String(expiresAt),
+        attributes: serializeAttrs(attributes),
+        content,
+      })
+    },
+    onError: (err) => {
+      console.error('watch error:', err.message)
+      broadcast({ type: 'watch_error', message: err.message })
+      try { unwatch?.() } catch {}
+      setTimeout(startWatch, 3000)
+    },
+  })
+}
+startWatch()
 
 httpServer.listen(PORT, () => console.log(`listening on http://localhost:${PORT}`))

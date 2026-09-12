@@ -28,16 +28,40 @@ export function createApp({ pub, wallet }) {
   app.use(express.json())
   app.use(express.static(join(__dirname, '..', 'public')))
 
+  // Only a real positive integer clamps. A typo used to become NaN, which is falsy, which
+  // silently disabled the clamp altogether.
+  const rawMax = Number(process.env.DEMO_MAX_TTL_BLOCKS)
+  const maxTtlBlocks = Number.isInteger(rawMax) && rawMax > 0 ? rawMax : undefined
+
   app.post('/api/memory', async (req, res) => {
     try {
       const { agentId, memoryType, tag, importance, content, ttlBlocks } = req.body
       if (!agentId || !memoryType || !tag || importance === undefined || !content || !ttlBlocks) {
         return res.status(400).json({ error: 'agentId, memoryType, tag, importance, content, ttlBlocks are all required' })
       }
+      // Without this a fractional or negative value reaches the SDK and surfaces as a 500 with a
+      // raw BigInt/InvalidExpiry message.
+      const importanceNum = Number(importance)
+      const requestedTtl = Number(ttlBlocks)
+      if (!Number.isInteger(importanceNum) || importanceNum < 0) {
+        return res.status(400).json({ error: 'importance must be a non-negative integer' })
+      }
+      if (!Number.isInteger(requestedTtl) || requestedTtl < 1) {
+        return res.status(400).json({ error: 'ttlBlocks must be a positive integer' })
+      }
+      const isClaim = memoryType === 'claim'
+      const appliedTtl = (maxTtlBlocks && isClaim) ? Math.min(requestedTtl, maxTtlBlocks) : requestedTtl
       const result = await writeMemory(wallet, {
-        agentId, memoryType, tag, importance: Number(importance), content, ttlBlocks: Number(ttlBlocks),
+        agentId, memoryType, tag, importance: importanceNum, content, ttlBlocks: appliedTtl,
       })
-      res.json({ ...result, appliedExpiresAt: result.appliedExpiresAt.toString() })
+      // Report what was asked for AND what was written. Returning only the clamped number as
+      // "requested" made the UI and the agent both believe the clamp had not happened.
+      res.json({
+        ...result,
+        requestedTtlBlocks: requestedTtl,
+        ttlClamped: appliedTtl !== requestedTtl,
+        appliedExpiresAt: result.appliedExpiresAt.toString(),
+      })
     } catch (e) {
       console.error('write failed:', e)
       res.status(500).json({ error: e.message })
@@ -61,9 +85,12 @@ export function createApp({ pub, wallet }) {
     }
   })
 
+  // Each row costs a Swarm round trip (8s timeout each), so 20 of them can outrun a serverless
+  // function's time limit on a slow gateway.
   app.get('/api/recent', async (_req, res) => {
     try {
-      const entities = await queryRecent(pub, { limit: 20 })
+      res.set('Cache-Control', 's-maxage=3')
+      const entities = await queryRecent(pub, { limit: 8 })
       res.json(await Promise.all(entities.map(withContent)))
     } catch (e) {
       console.error('recent failed:', e)
