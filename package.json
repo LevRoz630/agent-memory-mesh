@@ -14,6 +14,7 @@
     "demo:protocol": "node --env-file=.env scripts/orchestrator.mjs",
     "feedback:repro": "node --env-file=.env scripts/feedback/run-all.mjs",
     "verify:crypto": "node scripts/test-envelope-crypto.mjs",
+    "verify:auditor-crypto": "node scripts/test-auditor-crypto.mjs",
     "verify:renew-stop": "node scripts/test-renew-stops.mjs",
     "verify:demo-controller": "node scripts/test-demo-controller.mjs",
     "verify:receipt": "node scripts/test-receipt.mjs",
