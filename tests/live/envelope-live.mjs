@@ -2,9 +2,9 @@
 // configured key cannot decrypt it, confirm a roster member can. Requires SWARM_SIGNER_KEY,
 // SWARM_POSTAGE_BATCH_ID, and ARKIV_PRIVATE_KEY_ATLAS/NOVA/SOL in the environment.
 //
-//   node --env-file=.env scripts/verify-envelope-live.mjs
+//   node --env-file=.env tests/live/envelope-live.mjs
 
-import { uploadMemory, downloadMemory } from '../src/swarm.mjs'
+import { uploadMemory, downloadMemory } from '../../src/swarm.mjs'
 
 console.log('live envelope round trip against the Swarm gateway\n')
 

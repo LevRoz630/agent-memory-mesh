@@ -2,7 +2,7 @@
 // returns typed wrapper objects ({ type, value }). Rendering a raw read result produces
 // "[object Object]" with no error and no type mismatch.
 //
-//   node --env-file=.env scripts/feedback/01-attribute-wrapper-shape.mjs
+//   node --env-file=.env arkiv-feedback/repro/01-attribute-wrapper-shape.mjs
 
 import { str } from '@arkiv-network/sdk'
 import { eq } from '@arkiv-network/sdk/query'

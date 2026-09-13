@@ -36,7 +36,7 @@ The shape appears in `getEntity`'s JSDoc example
 (`src/clients/decorators/arkivPublic.ts:66`) but not in `createEntity`'s, so the asymmetry is
 discoverable only from the read side.
 
-Reproduce: `scripts/feedback/01-attribute-wrapper-shape.mjs`
+Reproduce: `arkiv-feedback/repro/01-attribute-wrapper-shape.mjs`
 
 ---
 
@@ -61,7 +61,7 @@ limit is UTF-8-correct — `'é'.repeat(64)` (128 B) passes, 65 fails.
 
 This schema is snake_case throughout for that reason (`src/arkiv.mjs`).
 
-Reproduce: `scripts/feedback/02-name-vs-value-validation.mjs`
+Reproduce: `arkiv-feedback/repro/02-name-vs-value-validation.mjs`
 
 ---
 
@@ -81,7 +81,7 @@ The error text names no nonce. Applied in `src/arkiv.mjs` (`makeClients`).
 Request: default to a nonce manager in the quickstart's account setup, or state that
 concurrent writes from one signer require one.
 
-Reproduce: `scripts/feedback/03-nonce-manager.mjs` (runs both arms, 12 transactions)
+Reproduce: `arkiv-feedback/repro/03-nonce-manager.mjs` (runs both arms, 12 transactions)
 
 ---
 
@@ -100,4 +100,4 @@ Expired entity `0x6a9bf0cc…`. Distinguishing "expired" from "unknown key" in a
 caching the expiry height at write time; `src/arkiv.mjs` (`watchMemories`) treats both as
 skip.
 
-Reproduce: `scripts/feedback/04-not-found-ambiguity.mjs` (writes a short TTL, waits past it)
+Reproduce: `arkiv-feedback/repro/04-not-found-ambiguity.mjs` (writes a short TTL, waits past it)

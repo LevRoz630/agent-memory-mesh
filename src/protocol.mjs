@@ -128,7 +128,7 @@ export async function tryClaim(ctx, agentId, tag, attempt = 0) {
 }
 
 // The engine rejects an extension two different ways, and they are not the same news. Both messages
-// below were captured live (scripts/verify-claim-lapse.mjs re-captures them on every run):
+// below were captured live (tests/live/claim-lapse.mjs re-captures them on every run):
 //   "entity 0x… expired at block N" — the entity is already gone. The lease is lost.
 //   "entity 0x… already expires at block N, so extending it to M would shorten its life" — this
 //     renewal followed so close behind the previous one that it would move the expiry backwards.

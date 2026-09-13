@@ -1,9 +1,9 @@
 // Two peers down at once: the survivor must detect, claim, and finish both outage incidents
 // concurrently, reviving both — not serialize behind one, and not silently drop the second.
 //
-//   node scripts/test-demo-double-outage.mjs
+//   node tests/unit/demo-double-outage.mjs
 
-import { createDemo } from '../src/demo.mjs'
+import { createDemo } from '../../src/demo.mjs'
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 

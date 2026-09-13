@@ -5,11 +5,11 @@
 // never renewed, left to expire for real. Neither wording matched the original /expiry/i guard.
 // renewClaim() must report the lapse as { lost: true } rather than throwing.
 //
-//   node --env-file=.env scripts/verify-claim-lapse.mjs
+//   node --env-file=.env tests/live/claim-lapse.mjs
 
-import { makeClients, makeAgentSigners, extendMemory, deleteMemory } from '../src/arkiv.mjs'
-import { writeMemory } from '../src/memory.mjs'
-import { renewClaim } from '../src/protocol.mjs'
+import { makeClients, makeAgentSigners, extendMemory, deleteMemory } from '../../src/arkiv.mjs'
+import { writeMemory } from '../../src/memory.mjs'
+import { renewClaim } from '../../src/protocol.mjs'
 
 const httpUrl = process.env.ARKIV_HTTP_URL
 const { pub } = makeClients({ privateKey: process.env.ARKIV_PRIVATE_KEY, httpUrl })

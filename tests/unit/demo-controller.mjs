@@ -1,9 +1,9 @@
 // The demo controller against fake ops: kill the claim holder mid-work, the survivor must wait for
 // the lease to lapse, take over, and resume from the dead agent's progress. No network, no env vars.
 //
-//   node scripts/test-demo-controller.mjs
+//   node tests/unit/demo-controller.mjs
 
-import { createDemo, WORK_STEPS } from '../src/demo.mjs'
+import { createDemo, WORK_STEPS } from '../../src/demo.mjs'
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 

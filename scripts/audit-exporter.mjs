@@ -9,7 +9,7 @@
 // URL. It never touches ARKIV_PRIVATE_KEY_ATLAS/NOVA/SOL, SWARM_SIGNER_KEY, or
 // SWARM_POSTAGE_BATCH_ID, so it can read and decrypt but can't write to Arkiv or spend the
 // postage batch. Run it as a genuinely separate process from the agents, ideally on a separate
-// machine, or the "separate observer" is cosmetic rather than real (see PITCH.md's honesty note
+// machine, or the "separate observer" is cosmetic rather than real (see docs/pitch/PITCH.md's honesty note
 // and this repo's own precedent for that distinction elsewhere in the encryption design).
 //
 //   node --env-file=.env.auditor scripts/audit-exporter.mjs [output-file]

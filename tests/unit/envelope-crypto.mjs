@@ -1,9 +1,9 @@
 // Pure crypto round-trip for the binary envelope format (spec §2). No network, no env vars.
 //
-//   node scripts/test-envelope-crypto.mjs
+//   node tests/unit/envelope-crypto.mjs
 
 import { randomBytes, createECDH } from 'node:crypto'
-import { derivePublicKey, encryptForRoster, decryptWithKey } from '../src/swarm.mjs'
+import { derivePublicKey, encryptForRoster, decryptWithKey } from '../../src/swarm.mjs'
 
 function freshPrivateKey() {
   const ecdh = createECDH('secp256k1')

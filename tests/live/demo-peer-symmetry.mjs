@@ -2,16 +2,16 @@
 // which used to be the only monitor — and its peers must notice the silence on their own, file the
 // outage, claim it, fix it, verify it, and bring the agent back.
 //
-//   node --env-file=.env scripts/verify-demo-peer-symmetry.mjs nova
-//   node --env-file=.env scripts/verify-demo-peer-symmetry.mjs atlas
+//   node --env-file=.env tests/live/demo-peer-symmetry.mjs nova
+//   node --env-file=.env tests/live/demo-peer-symmetry.mjs atlas
 //
 // `--early` pulls the plug while the seeded incident is still open, so the agent can only come back
 // through its own outage incident — never as a side effect of the seeded one resolving.
 // `--before-report` cuts atlas before it can file the rack incident at all.
 
-import { makeClients, makeAgentSigners, queryByTagAndType } from '../src/arkiv.mjs'
-import { createDemo } from '../src/demo.mjs'
-import { createDemoOps } from '../src/demo-ops.mjs'
+import { makeClients, makeAgentSigners, queryByTagAndType } from '../../src/arkiv.mjs'
+import { createDemo } from '../../src/demo.mjs'
+import { createDemoOps } from '../../src/demo-ops.mjs'
 
 const victim = process.argv[2] ?? 'nova'
 const early = process.argv.includes('--early')

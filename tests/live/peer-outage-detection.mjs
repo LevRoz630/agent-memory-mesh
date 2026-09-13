@@ -1,10 +1,10 @@
 // Live check: nova's heartbeat lapses, sol's watch loop detects it and files exactly one
 // outage incident — not zero, not a duplicate.
 //
-//   node --env-file=.env scripts/verify-peer-outage-detection.mjs
+//   node --env-file=.env tests/live/peer-outage-detection.mjs
 
-import { makeClients, makeAgentSigners, queryByTagPrefixAndType } from '../src/arkiv.mjs'
-import { startHeartbeat, watchForPeerOutages, outageTagPrefix } from '../src/protocol.mjs'
+import { makeClients, makeAgentSigners, queryByTagPrefixAndType } from '../../src/arkiv.mjs'
+import { startHeartbeat, watchForPeerOutages, outageTagPrefix } from '../../src/protocol.mjs'
 
 const httpUrl = process.env.ARKIV_HTTP_URL
 const { pub } = makeClients({ privateKey: process.env.ARKIV_PRIVATE_KEY, httpUrl })

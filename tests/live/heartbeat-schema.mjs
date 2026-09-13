@@ -1,8 +1,8 @@
 // Live check: heartbeat is accepted as a memory_type, queryable the same way claims are.
 //
-//   node --env-file=.env scripts/verify-heartbeat-schema.mjs
+//   node --env-file=.env tests/live/heartbeat-schema.mjs
 
-import { makeClients, createMemory, queryByTagAndType } from '../src/arkiv.mjs'
+import { makeClients, createMemory, queryByTagAndType } from '../../src/arkiv.mjs'
 
 const { wallet } = makeClients({ privateKey: process.env.ARKIV_PRIVATE_KEY })
 const tag = `verify-heartbeat-${Date.now()}`

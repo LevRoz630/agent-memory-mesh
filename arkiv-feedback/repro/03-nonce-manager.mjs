@@ -2,7 +2,7 @@
 // unless the account was built with viem's nonceManager. Builds both accounts here, since
 // src/arkiv.mjs's makeClients now always passes one.
 //
-//   node --env-file=.env scripts/feedback/03-nonce-manager.mjs
+//   node --env-file=.env arkiv-feedback/repro/03-nonce-manager.mjs
 
 import { createWalletClient, ExpirationTime, str, stringToPayload } from '@arkiv-network/sdk'
 import { tiramisu } from '@arkiv-network/sdk/chains'

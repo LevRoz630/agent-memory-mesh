@@ -2,9 +2,9 @@
 //   - it must not extend a lease once shouldContinue() has gone false during its wait
 //   - it must tell the three extendEntity rejections apart (lapsed / too soon / unexpected)
 //
-//   node scripts/test-renew-stops.mjs
+//   node tests/unit/renew-stops.mjs
 
-import { renewClaim } from '../src/protocol.mjs'
+import { renewClaim } from '../../src/protocol.mjs'
 
 const results = []
 const check = (name, ok) => {
