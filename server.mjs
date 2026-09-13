@@ -34,7 +34,10 @@ wss.on('connection', (ws) => {
   ws.send(JSON.stringify({ type: 'connected', swarmGateway: GATEWAY }))
   ws.send(JSON.stringify(chainMessage(chain.getState())))
   ws.on('close', () => liveClients.delete(ws))
+  // An unhandled 'error' on an EventEmitter throws, and the agents exit when this process does.
+  ws.on('error', () => liveClients.delete(ws))
 })
+wss.on('error', (e) => console.error('[live] websocket server error:', e.message))
 
 function broadcast(msg) {
   const data = JSON.stringify(msg)

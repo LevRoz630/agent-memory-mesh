@@ -10,7 +10,7 @@ import { bootControlRoom } from '../src/control-client.mjs'
 
 let printed = 0
 const room = await bootControlRoom({
-  port: Number(process.env.PORT ?? 3999),
+  port: Number(process.env.PORT || 3999),
   onState: (state) => {
     for (const e of state.timeline.slice(printed)) console.log(`[${e.agentId}] ${e.text}`)
     printed = state.timeline.length

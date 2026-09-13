@@ -25,7 +25,7 @@ import { AGENT_IDS } from './arkiv.mjs'
 import { ROSTER } from './roster.mjs'
 import { createPartitionedStamper } from './stamp-slots.mjs'
 
-export const GATEWAY = process.env.SWARM_GATEWAY ?? 'https://api.gateway.ethswarm.org'
+export const GATEWAY = process.env.SWARM_GATEWAY || 'https://api.gateway.ethswarm.org'
 // A gateway that accepts the connection and then stalls leaves a bare fetch() pending
 // indefinitely, hanging whichever route is awaiting it.
 const FETCH_TIMEOUT_MS = 8000
@@ -159,7 +159,7 @@ export function getSwarm() {
     // exposes no /stamps, and this node accepted stamps for every depth from 16 to 30, so it
     // validates the signature but not the slot index. Depth decides only how many slots we
     // believe each bucket has before refusing to reuse one.
-    const depth = Number(process.env.SWARM_BATCH_DEPTH ?? 23)
+    const depth = Number(process.env.SWARM_BATCH_DEPTH || 23)
     // Agent processes share the batch, so each stamps only its own slots and remembers them across
     // restarts; a fresh Stamper in two processes, or in one restarted process, would reuse slots.
     const agentId = process.env.HYDRA_AGENT_ID

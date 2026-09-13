@@ -251,10 +251,10 @@ export function createAgent({ agentId, runId, ops, send = () => {}, timings = {}
       for (const [tag, incident] of incidents) {
         if (!live()) return
         if (verified.has(tag) || ownFixes.has(tag)) continue
-        if (!(await ops.isDone(tag))) continue
-        if (!live()) return
-        verified.add(tag)
         try {
+          if (!(await ops.isDone(tag))) continue
+          if (!live()) return
+          verified.add(tag)
           const result = await ops.verify(agentId, tag, () => probe(incident))
           if (result.refused) {
             ownFixes.add(tag)
