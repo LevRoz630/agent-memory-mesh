@@ -72,6 +72,19 @@ export function makeClients({ privateKey, httpUrl }) {
   return { account, pub, wallet }
 }
 
+// viem's nonce manager hands a nonce out before the SDK estimates gas and never takes it back when the
+// estimate fails, e.g. renewing a claim that just lapsed. Every later transaction from that wallet then
+// waits behind the gap, heartbeats included, until something reuses the lost nonce. Forgetting the
+// cached nonce makes the next write do that.
+async function mutate(wallet, send) {
+  try {
+    return await send()
+  } catch (e) {
+    if (!e.txHash) wallet.account?.nonceManager?.reset({ address: wallet.account.address, chainId: wallet.chain.id })
+    throw e
+  }
+}
+
 // The applied expiry is resolved against whatever block the tx lands in, so it can sit past
 // what ttlBlocks asked for. Both are returned.
 export async function createMemory(wallet, { agentId, memoryType, tag, importance, swarmRef, ttlBlocks, outcome }) {
@@ -87,12 +100,12 @@ export async function createMemory(wallet, { agentId, memoryType, tag, importanc
     [ATTR.swarmRef]: str(swarmRef),
   }
   if (outcome !== undefined) attributes[ATTR.outcome] = str(outcome)
-  const { entityKey, txHash, expiresAt } = await wallet.createEntity({
+  const { entityKey, txHash, expiresAt } = await mutate(wallet, () => wallet.createEntity({
     expires: ExpirationTime.fromBlocks(ttlBlocks),
     payload: stringToPayload(''),
     contentType: 'application/octet-stream',
     attributes,
-  })
+  }))
   return { entityKey, txHash, appliedExpiresAt: expiresAt }
 }
 
@@ -100,11 +113,11 @@ export async function createMemory(wallet, { agentId, memoryType, tag, importanc
 // owned by <addr>, not <addr>". With one wallet per agent that means no agent can renew or
 // release another's claim, so lapsing is the only way an abandoned claim frees up.
 export async function extendMemory(wallet, { entityKey, ttlBlocks }) {
-  await wallet.extendEntity({ entityKey, expires: ExpirationTime.fromBlocks(ttlBlocks) })
+  await mutate(wallet, () => wallet.extendEntity({ entityKey, expires: ExpirationTime.fromBlocks(ttlBlocks) }))
 }
 
 export async function deleteMemory(wallet, { entityKey }) {
-  await wallet.deleteEntity({ entityKey })
+  await mutate(wallet, () => wallet.deleteEntity({ entityKey }))
 }
 
 // Reads hand back typed wrappers ({ type: 'str', value: 'atlas' }), asymmetric with the
