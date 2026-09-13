@@ -1,6 +1,6 @@
 // Live round trip for lane (feed) writes: stamp our own address with the shared batch, write at
 // an explicit index, read it back with no key at all, and confirm an unwritten index reads as a
-// clean null rather than an error. This is the mechanism ARCHITECTURE.md §7 depends on but had no
+// clean null rather than an error. This is the mechanism ARCHITECTURE.md §4 depends on but had no
 // reproducer for.
 //
 //   node --env-file=.env scripts/verify-lane.mjs

@@ -1,5 +1,5 @@
 import { writeMemory } from './memory.mjs'
-import { writeToLane } from './lane.mjs'
+import { writeToLane, nextFreeLaneIndex } from './lane.mjs'
 import { queryByTagAndType } from './arkiv.mjs'
 import {
   tryClaim, renewClaim, takeOver, finish as finishWork, startHeartbeat, watchForPeerOutages,
@@ -29,7 +29,7 @@ export function createDemoOps(ctx) {
 
     startHeartbeat: (agentId, shouldContinue) => startHeartbeat(ctx, agentId, shouldContinue),
 
-    watchForPeerOutages: (agentId, onOutageDetected) => watchForPeerOutages(ctx, agentId, onOutageDetected),
+    watchForPeerOutages: (agentId, scope, onOutage) => watchForPeerOutages(ctx, agentId, scope, onOutage),
 
     verify: (agentId, tag) => verifyWork(ctx, agentId, tag),
 
@@ -42,20 +42,15 @@ export function createDemoOps(ctx) {
       ), 0)
     },
 
-    // takeOver() finds lanes through `lane` rows on Arkiv, so the row has to exist from the first
-    // step, not only at finish, or a successor can't see a dead agent's progress.
+    nextLaneIndex: (agentId, tag) => nextFreeLaneIndex(signerFor(ctx, agentId).account.address, tag),
+
     async recordStep(agentId, tag, step, laneIndex) {
       const signer = signerFor(ctx, agentId)
       const privateKeyHex = process.env[`ARKIV_PRIVATE_KEY_${agentId.toUpperCase()}`]
       await writeToLane(privateKeyHex, signer.account.address, tag, laneIndex, { kind: 'progress', step, action: WORK_STEPS[step] })
-      if (laneIndex === 0) {
-        await writeMemory(signer.wallet, {
-          agentId, memoryType: 'lane', tag, importance: 5, content: { note: 'lane provenance marker' }, ttlBlocks: LONG_LIVED_BLOCKS,
-        })
-      }
     },
 
-    finish: (agentId, tag, entityKey) => finishWork(ctx, agentId, tag, entityKey, { note: `rack R12 recovered by ${agentId}` }),
+    finish: (agentId, tag, entityKey) => finishWork(ctx, agentId, tag, entityKey, { note: `${tag} resolved by ${agentId}` }),
 
     async isDone(tag) {
       return (await queryByTagAndType(ctx.pub, { tag, memoryType: 'done', limit: 1 })).length > 0

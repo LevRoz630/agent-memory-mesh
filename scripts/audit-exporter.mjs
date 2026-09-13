@@ -1,9 +1,9 @@
 // Continuous audit export: there is no bulk-list/export API anywhere in Swarm or Arkiv (checked
 // against bee-js's chunk/SOC/feed/manifest surface and Arkiv's query API; both are strictly
-// retrieve-by-known-reference), and Arkiv rows expire in 20 minutes for event/lane/done/verdict,
-// 24 seconds for claim. So "exporting the logs" can't be a script you run later against
+// retrieve-by-known-reference), and Arkiv rows expire in ~20 minutes for event/lane/done/verdict,
+// ~24 seconds for claim. So "exporting the logs" can't be a script you run later against
 // something that's still there. It has to watch continuously and copy each row out before it
-// ages off both systems. See docs/ARCHITECTURE.md §8.
+// ages off both systems. See docs/ARCHITECTURE.md §6.
 //
 // Deliberately minimal privilege: this process takes only AUDITOR_PRIVATE_KEY and a Swarm gateway
 // URL. It never touches ARKIV_PRIVATE_KEY_ATLAS/NOVA/SOL, SWARM_SIGNER_KEY, or
@@ -65,15 +65,31 @@ async function exportMemory({ entityKey, owner, expiresAt, attributes }) {
   console.log(`[export] ${attributes.memory_type}/${attributes.tag} (${entityKey.slice(0, 18)}…) ${decryptError ? `— undecryptable: ${decryptError}` : '— exported'}`)
 }
 
-watchMemories(wsClient, pub, {
-  onMemory: (m) => { exportMemory(m).catch((e) => console.error('[export] failed:', e.message)) },
-  onExtended: ({ entityKey, owner, expiresAt }) => {
-    append({ event: 'extended', entityKey, owner, expiresAt: String(expiresAt) })
-  },
-  onDeleted: ({ entityKey }) => {
-    append({ event: 'deleted', entityKey })
-  },
-  onError: (err) => console.error('[export] watch error:', err.message),
-})
+// viem's websocket transport reconnects the socket but not the subscription behind it (server.mjs
+// re-arms for the same reason), and a watch that stays dropped is a silent gap in the audit trail.
+let unwatch = null
+function startWatch() {
+  unwatch = watchMemories(wsClient, pub, {
+    onMemory: (m) => { exportMemory(m).catch((e) => console.error('[export] failed:', e.message)) },
+    // A row deleted before it could be read back (a claim that lost the tie-break) never reaches
+    // onMemory. It is recorded here instead of vanishing.
+    onEvent: ({ phase, entityKey, owner }) => {
+      if (phase === 'error') append({ event: 'created-unreadable', entityKey, owner })
+    },
+    onExtended: ({ entityKey, owner, expiresAt }) => {
+      append({ event: 'extended', entityKey, owner, expiresAt: String(expiresAt) })
+    },
+    onDeleted: ({ entityKey }) => {
+      append({ event: 'deleted', entityKey })
+    },
+    onError: (err) => {
+      console.error('[export] watch error:', err.message)
+      append({ event: 'watch-error', message: err.message })
+      try { unwatch?.() } catch {}
+      setTimeout(startWatch, 3000)
+    },
+  })
+}
+startWatch()
 
 console.log(`[export] watching, appending to ${outputFile} (auditor decrypt key configured, no write credentials held)`)

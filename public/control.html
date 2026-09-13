@@ -93,9 +93,9 @@ function render() {
 
   $('dcs').innerHTML = AGENTS.map((id) => {
     const a = state.agents[id]
-    const rackFailed = id === 'atlas' && state.phase === 'running'
+    const rackFailed = id === 'atlas' && state.phase === 'running' && state.report
     const slots = Array.from({ length: 8 }, (_, i) => `<span class="${rackFailed && i === FAILED_SLOT ? 'failed' : ''}"></span>`).join('')
-    const canKill = a.alive && state.phase === 'running' && (id !== 'atlas' || state.report)
+    const canKill = a.alive && state.phase !== 'idle'
     return `<div class="dc${a.alive ? '' : ' down'}">
       <h2>${esc(a.dc)}</h2>
       <div class="rack">${slots}</div>

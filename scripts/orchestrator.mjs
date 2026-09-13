@@ -1,73 +1,32 @@
-// Runs atlas, nova, and sol as concurrent loops in one process, so they share one Swarm Stamper.
-// (See Global Constraints in the implementation plan: splitting them into separate OS processes
-// would let each start every postage bucket at slot 0 on the same shared batch.)
+// Headless run of the same peer-symmetric controller the control room drives: atlas, nova and sol
+// as identical peers in one process (so they share one Swarm Stamper), each renewing a heartbeat,
+// watching the other two, and claiming/working/verifying incidents. Optional kills cut an agent's
+// power a number of seconds in, the way the control room's buttons do. Runs until Ctrl+C.
 //
-//   node --env-file=.env scripts/orchestrator.mjs <tag>
+//   node --env-file=.env scripts/orchestrator.mjs [agent@seconds ...]
 //
-// Example: node --env-file=.env scripts/orchestrator.mjs incident-42
+// Example, the double hand-off: node --env-file=.env scripts/orchestrator.mjs atlas@14 nova@60
 
 import { makeClients, makeAgentSigners } from '../src/arkiv.mjs'
-import { writeMemory } from '../src/memory.mjs'
-import { writeToLane, nextFreeLaneIndex } from '../src/lane.mjs'
-import { tryClaim, renewClaim, takeOver, finish, verify } from '../src/protocol.mjs'
+import { createDemo } from '../src/demo.mjs'
+import { createDemoOps } from '../src/demo-ops.mjs'
 
 const httpUrl = process.env.ARKIV_HTTP_URL
-const wsUrl = process.env.ARKIV_WS_URL
-const { pub } = makeClients({ privateKey: process.env.ARKIV_PRIVATE_KEY, httpUrl, wsUrl })
+const { pub } = makeClients({ privateKey: process.env.ARKIV_PRIVATE_KEY, httpUrl, wsUrl: process.env.ARKIV_WS_URL })
 const signers = makeAgentSigners({ httpUrl })
-const ctx = { pub, signers }
 
-const tag = process.argv[2] ?? `incident-${Date.now()}`
-const log = (agent, msg) => console.log(`[${agent}] ${msg}`)
+let printed = 0
+const demo = createDemo({
+  ops: createDemoOps({ pub, signers }),
+  onUpdate: (state) => {
+    for (const e of state.timeline.slice(printed)) console.log(`[${e.agentId}] ${e.text}`)
+    printed = state.timeline.length
+  },
+})
 
-async function atlasReports() {
-  const atlas = signers.get('atlas')
-  const agentPrivateKeyHex = process.env.ARKIV_PRIVATE_KEY_ATLAS
-  const index = await nextFreeLaneIndex(atlas.account.address, tag)
-  await writeToLane(agentPrivateKeyHex, atlas.account.address, tag, index, { kind: 'diagnosis', note: 'incident detected' })
-  await writeMemory(atlas.wallet, {
-    agentId: 'atlas', memoryType: 'event', tag, importance: 8,
-    content: { note: 'incident detected' }, ttlBlocks: 600,
-  })
-  log('atlas', `reported ${tag}`)
+for (const arg of process.argv.slice(2)) {
+  const [agentId, seconds] = arg.split('@')
+  setTimeout(() => demo.kill(agentId), Number(seconds) * 1000)
 }
 
-async function workerLoop(agentId) {
-  const claimed = await tryClaim(ctx, agentId, tag)
-  if (!claimed.held) {
-    log(agentId, 'lost the race or incident already spoken for — exiting')
-    return
-  }
-  log(agentId, `holds the claim (${claimed.entityKey.slice(0, 18)}…)`)
-  let renewing = true
-  let renewalError = null
-  // Attach .catch() immediately, not after the sleep below. Otherwise a rejection during the
-  // sleep window is an unhandled rejection that can crash the process before we ever await it.
-  const renewalPromise = renewClaim(ctx, agentId, claimed.entityKey, undefined, () => renewing)
-    .catch((e) => { renewalError = e })
-
-  // Simulated work: a real worker would diagnose and fix here. This orchestrator just
-  // demonstrates the mechanism, so it pauses briefly then finishes.
-  await new Promise((resolve) => setTimeout(resolve, 5000))
-
-  renewing = false
-  const renewalResult = await renewalPromise
-  if (renewalError) log(agentId, `renewal failed: ${renewalError.message}`)
-  // A lapsed lease is reported, not thrown. Finishing anyway would write `lane`/`done` rows for a
-  // tag another agent may hold by now, and delete an entity key that no longer exists.
-  if (renewalResult?.lost) {
-    log(agentId, 'lease lapsed before the work finished — dropping the claim without finishing')
-    return
-  }
-  await finish(ctx, agentId, tag, claimed.entityKey, { note: `fixed by ${agentId}` })
-  log(agentId, 'finished')
-}
-
-async function atlasVerifies() {
-  const result = await verify(ctx, 'atlas', tag)
-  log('atlas', `verdict: ${result.outcome}`)
-}
-
-await atlasReports()
-await Promise.race([workerLoop('nova'), workerLoop('sol')])
-await atlasVerifies()
+await demo.start()

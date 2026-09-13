@@ -144,6 +144,10 @@ export async function queryByTagAndType(pub, { tag, memoryType, limit = 20 }) {
   return runQuery(pub, and(eq(ATTR.app, str(APP)), eq(ATTR.tag, str(tag)), eq(ATTR.memoryType, str(memoryType))), limit)
 }
 
+export async function queryByTagPrefixAndType(pub, { tagPrefix, memoryType, limit = 50 }) {
+  return runQuery(pub, and(eq(ATTR.app, str(APP)), startsWith(ATTR.tag, str(tagPrefix)), eq(ATTR.memoryType, str(memoryType))), limit)
+}
+
 // An EntityCreated event carries only { entityKey, owner, expiresAt }, so each one has to be
 // read back to tell whether it is ours; a failed read (wrong type, already expired) is skipped
 // silently rather than surfaced, so unrelated chain events never reach onMemory.
