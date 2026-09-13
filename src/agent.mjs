@@ -24,6 +24,8 @@ const INCIDENT_REPORT = {
 const DEFAULT_TIMINGS = {
   stepMs: 6000,
   retryMs: 3000,
+  // A step that failed (say, a rack whose data center is dark) won't succeed a few seconds later.
+  failedStepBackoffMs: 15000,
   pollMs: 4000,
   // A just-written heartbeat stays invisible to queries for a block or two, so a watcher that starts
   // with the beats would read everyone's startup lag as an outage.
@@ -124,6 +126,7 @@ export function createAgent({ agentId, runId, ops, send = () => {}, timings = {}
           lostReason = result.reason ? ` (${result.reason})` : ''
         })
         .catch((e) => event(`lease renewal failed: ${e.message}`))
+      let failure = null
       try {
         let step = await ops.readProgress(tag)
         if (step > 0) event(`found ${step}/${steps.length} steps already done on Swarm, resuming`)
@@ -138,11 +141,21 @@ export function createAgent({ agentId, runId, ops, send = () => {}, timings = {}
           track(tag, { stepsDone: step })
           event(`step ${step}/${steps.length}: ${steps[step - 1]}`)
         }
+      } catch (e) {
+        failure = e
       } finally {
         workingOn = false
       }
       await renewal
       if (!live()) return
+      // Leaving the claim to expire would hold every peer off the incident for a whole lease.
+      if (failure && !leaseLost) {
+        await ops.releaseClaim(agentId, claim.entityKey).catch(() => {})
+        event(`could not finish ${tag}: ${failure.message}; released the claim`)
+        setStatus('waiting')
+        await sleep(t.failedStepBackoffMs)
+        continue
+      }
       if (leaseLost) {
         event(`lease on ${tag} lapsed before the work finished, dropping the claim${lostReason}`)
         setStatus('waiting')

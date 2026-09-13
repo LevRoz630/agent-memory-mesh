@@ -7,8 +7,10 @@ import { writeMemory } from './memory.mjs'
 import { ROSTER } from './roster.mjs'
 import { writeToLane, readLane, nextFreeLaneIndex } from './lane.mjs'
 
-const CLAIM_LEASE_BLOCKS = 12 // long enough to fit a two-block settle window ahead of the first
-                               // renewal at ~1/3 lease; see spec's B7 resolution
+// Tiramisu has held every one of our transactions back for 11 blocks at a time, so a lease must outlive
+// a renewal that lands that late: renewing every 4 blocks (claim) and every 2 (heartbeat) survives a
+// 20- and 14-block delay.
+const CLAIM_LEASE_BLOCKS = 24
 export const LONG_LIVED_BLOCKS = 600 // matches event/lane/done/verdict TTL elsewhere in the protocol
 const MAX_CLAIM_ATTEMPTS = 10 // bounds gas spend on repeated tie-break losses, not stack depth
 const VERIFY_POLL_MAX_ATTEMPTS = 30 // ~60s at the 2s poll interval below
@@ -148,7 +150,7 @@ export async function renewClaim(ctx, agentId, entityKey, leaseBlocks = CLAIM_LE
   const { pub, signers } = ctx
   const signer = signers.get(agentId)
   if (!signer) throw new Error(`no signer configured for agentId "${agentId}"`)
-  const renewEveryBlocks = Math.max(1, Math.floor(leaseBlocks / 3))
+  const renewEveryBlocks = Math.max(1, Math.floor(leaseBlocks / 6))
   while (shouldContinue()) {
     const start = await pub.getBlockNumber()
     await waitForBlock(pub, start + BigInt(renewEveryBlocks))
@@ -190,7 +192,7 @@ export async function readProfile(ctx, agentId) {
   return index === 0 ? null : readLane(address, profileTag(agentId), index - 1)
 }
 
-export const HEARTBEAT_LEASE_BLOCKS = 8
+export const HEARTBEAT_LEASE_BLOCKS = 16
 
 export async function startHeartbeat(ctx, agentId, shouldContinue = () => true) {
   const { pub, signers } = ctx
@@ -205,7 +207,7 @@ export async function startHeartbeat(ctx, agentId, shouldContinue = () => true) 
   // the write's own block keeps the first lookup below from reading that lag as "already down".
   const receipt = await pub.waitForTransactionReceipt({ hash: written.txHash })
   let anchor = receipt.blockNumber
-  const renewEveryBlocks = Math.max(1, Math.floor(HEARTBEAT_LEASE_BLOCKS / 3))
+  const renewEveryBlocks = Math.max(1, Math.floor(HEARTBEAT_LEASE_BLOCKS / 8))
   while (shouldContinue()) {
     await waitForBlock(pub, anchor + BigInt(renewEveryBlocks))
     if (!shouldContinue()) break

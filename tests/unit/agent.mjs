@@ -11,7 +11,7 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 const AGENTS = ['atlas', 'nova', 'sol']
 const LEASE_MS = 150
 const SILENCE_MS = 80
-const TIMINGS = { stepMs: 30, retryMs: 20, pollMs: 20, watchStartDelayMs: 40, monitorStartDelayMs: 10 }
+const TIMINGS = { stepMs: 30, retryMs: 20, failedStepBackoffMs: 40, pollMs: 20, watchStartDelayMs: 40, monitorStartDelayMs: 10 }
 
 function createWorld() {
   const runId = String(Date.now())
@@ -93,6 +93,11 @@ function createWorld() {
           for (const held of chain.claims.values()) if (held.agentId === id) held.expiresAt = Date.now() + LEASE_MS
         }
         return { lost: false }
+      },
+      async releaseClaim(id, key) {
+        const tag = key.slice(`claim-${id}-`.length)
+        if (chain.claims.get(tag)?.agentId === id) chain.claims.delete(tag)
+        log.push(['release', id, tag])
       },
       async readProgress(tag) {
         return steps.filter((s) => s.tag === tag).length
@@ -206,6 +211,22 @@ console.log('\nscenario: DC-1 loses power before atlas can file anything\n')
   check('atlas filed the rack incident only after it was powered back on',
     w.log.findIndex((l) => l[0] === 'report') > w.log.findIndex((l) => l[0] === 'power' && l[2] === 'atlas' && l[3] === 'on'))
   check('the rack is up', w.infra.status().racks.R12.state === 'up')
+  w.stopAll()
+}
+
+console.log('\nscenario: a peer tries the rack while its data center is dark\n')
+{
+  const w = createWorld()
+  AGENTS.forEach(w.boot)
+  const tag = rackTag(w.runId)
+  await waitFor(() => w.chain.claims.has(tag), 'someone to claim the rack incident')
+  w.infra.setDcPower('atlas', 'off')
+  await waitFor(() => w.timeline.some((e) => e.text.startsWith(`could not finish ${tag}`)), 'a rack step to fail on the dark DC')
+  const failed = w.timeline.find((e) => e.text.startsWith(`could not finish ${tag}`))
+  check('the agent whose step failed released its claim instead of letting it expire', w.log.some((l) => l[0] === 'release' && l[1] === failed.agentId && l[2] === tag))
+  w.infra.setDcPower('atlas', 'on')
+  await waitFor(() => w.chain.done.has(tag), 'the rack incident to be finished once DC-1 is back', 8000)
+  check('the rack incident was still finished', w.infra.status().racks.R12.state === 'up')
   w.stopAll()
 }
 

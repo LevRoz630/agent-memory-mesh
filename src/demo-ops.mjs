@@ -1,6 +1,6 @@
 import { writeMemory } from './memory.mjs'
 import { writeToLane, nextFreeLaneIndex } from './lane.mjs'
-import { queryByTagAndType, queryByTagPrefixAndType, AGENT_IDS } from './arkiv.mjs'
+import { queryByTagAndType, queryByTagPrefixAndType, deleteMemory, AGENT_IDS } from './arkiv.mjs'
 import {
   tryClaim, renewClaim, takeOver, finish as finishWork, startHeartbeat, watchForPeerOutages, publishProfile,
   verify as verifyWork, outageTagPrefix, LONG_LIVED_BLOCKS,
@@ -58,6 +58,8 @@ export function createDemoOps(ctx) {
     watchForPeerOutages: (agentId, scope, onOutage) => watchForPeerOutages(ctx, agentId, scope, onOutage),
 
     verify: (agentId, tag, probe) => verifyWork(ctx, agentId, tag, probe),
+
+    releaseClaim: (agentId, entityKey) => deleteMemory(signerFor(ctx, agentId).wallet, { entityKey }),
 
     renewClaim: (agentId, entityKey, shouldContinue) => renewClaim(ctx, agentId, entityKey, undefined, shouldContinue),
 
