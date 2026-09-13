@@ -46,28 +46,57 @@
   .hydra text { fill: currentColor; font-size: 14px; font-weight: 600; text-anchor: middle; }
   .hydra .eye { fill: var(--paper); }
   .hydra .pupil { fill: var(--swarm); }
+  .hydra .shadow { fill: currentColor; opacity: 0.12; }
+  .hydra .body { transform-box: fill-box; transform-origin: 50% 100%; }
+  .hydra .neck { transform-box: view-box; transform-origin: var(--base); }
   .hydra .head { transform-box: fill-box; transform-origin: 50% 100%; }
-  .hydra .stump { fill: var(--bad); opacity: 0; }
-  .hydra .slash { stroke: var(--bad); stroke-width: 4; stroke-linecap: round; opacity: 0; }
+  .hydra .eye, .hydra .pupil { transform-box: fill-box; transform-origin: center; }
+  .hydra .stump { fill: var(--bad); opacity: 0; transform-box: fill-box; transform-origin: center; }
+  .hydra .slash { stroke: var(--bad); stroke-width: 4; stroke-linecap: round; opacity: 0; stroke-dasharray: 60; }
+  .hydra .burst { fill: none; stroke: var(--ok); stroke-width: 3; opacity: 0; transform-box: fill-box; transform-origin: center; }
+  @media (prefers-reduced-motion: no-preference) {
+    .hydra .body { animation: breathe 4s ease-in-out infinite; }
+    .hydra .neck { animation: sway 5s ease-in-out var(--delay) infinite alternate; }
+    .hydra .eye, .hydra .pupil { animation: blink 4.5s var(--delay) infinite; }
+    .neck.busy .pupil { animation: glow 0.8s ease-in-out infinite alternate; }
+  }
   .neck.dead .head { opacity: 0; }
   .neck.dead .stump { opacity: 1; }
-  .neck.cut .head { animation: head-cut 0.9s ease-in; }
-  .neck.cut .stump { animation: stump-in 0.9s; }
-  .neck.cut .slash { animation: slash 0.35s; }
-  .neck.regrow .head { animation: head-regrow 1.2s ease-out; }
-  .neck.regrow .stump { animation: stump-out 0.4s; }
+  .neck.cut .head { animation: head-cut 1.1s cubic-bezier(0.5, 0, 0.9, 0.6); }
+  .neck.cut .stump { animation: stump-in 1.1s; }
+  .neck.cut .slash { animation: slash 0.45s ease-out; }
+  .neck.regrow .head { animation: head-regrow 1.3s cubic-bezier(0.3, 1.4, 0.6, 1); }
+  .neck.regrow .stump { animation: stump-out 0.3s; }
+  .neck.regrow .burst { animation: burst 0.8s ease-out; }
+  @keyframes breathe { 50% { transform: scale(1.02, 1.05); } }
+  @keyframes sway { from { transform: rotate(-2.5deg); } to { transform: rotate(2.5deg); } }
+  @keyframes blink { 0%, 94%, 100% { transform: none; } 97% { transform: scaleY(0.1); } }
+  @keyframes glow { from { filter: none; } to { filter: drop-shadow(0 0 3px var(--swarm)) brightness(1.4); } }
   @keyframes head-cut {
-    0% { transform: none; opacity: 1; }
-    30% { transform: translateY(-4px) rotate(-8deg); opacity: 1; }
-    100% { transform: translate(20px, 80px) rotate(60deg); opacity: 0; }
+    0%, 20% { transform: none; opacity: 1; filter: brightness(1); }
+    25% { filter: brightness(3); }
+    40% { transform: translate(-4px, -14px) rotate(-20deg); opacity: 1; filter: brightness(1); }
+    100% { transform: translate(36px, 120px) rotate(130deg); opacity: 0; }
   }
-  @keyframes stump-in { 0%, 50% { opacity: 0; } 100% { opacity: 1; } }
+  @keyframes stump-in {
+    0%, 25% { opacity: 0; transform: scale(0.4); }
+    45% { opacity: 1; transform: scale(1.4); }
+    100% { opacity: 1; transform: none; }
+  }
   @keyframes stump-out { from { opacity: 1; } to { opacity: 0; } }
-  @keyframes slash { 0% { opacity: 1; } 100% { opacity: 0; } }
+  @keyframes slash {
+    0% { opacity: 1; stroke-dashoffset: 60; }
+    50% { opacity: 1; stroke-dashoffset: 0; }
+    100% { opacity: 0; stroke-dashoffset: 0; }
+  }
   @keyframes head-regrow {
     0% { transform: scale(0); filter: none; }
-    60% { transform: scale(1.15); filter: drop-shadow(0 0 8px var(--ok)); }
+    60% { transform: scale(1); filter: drop-shadow(0 0 10px var(--ok)); }
     100% { transform: scale(1); filter: none; }
+  }
+  @keyframes burst {
+    0% { opacity: 1; transform: scale(0.5); }
+    100% { opacity: 0; transform: scale(5); }
   }
 </style>
 </head>
@@ -83,12 +112,14 @@
 <span id="phase" class="mono"></span>
 
 <svg class="hydra" viewBox="0 0 600 270" role="img" aria-label="Hydra: one head per agent">
-  <ellipse class="flesh" cx="300" cy="235" rx="130" ry="30"/>
-  <g class="neck" data-agent="atlas">
+  <ellipse class="shadow" cx="300" cy="262" rx="150" ry="7"/>
+  <ellipse class="flesh body" cx="300" cy="235" rx="130" ry="30"/>
+  <g class="neck" data-agent="atlas" style="--base: 250px 225px; --delay: -1.7s">
     <path class="neckline" d="M250 225 C 210 195, 110 195, 120 120"/>
     <text x="120" y="60">atlas</text>
     <g transform="translate(120 120) scale(-1 1)">
       <ellipse class="stump" rx="12" ry="5"/>
+      <circle class="burst" r="10"/>
       <g class="head">
         <ellipse class="flesh" cx="4" cy="-14" rx="24" ry="18"/>
         <path class="flesh" d="M10 -24 L48 -15 L46 -3 L10 -2 Z"/>
@@ -99,11 +130,12 @@
       <line class="slash" x1="-22" y1="10" x2="22" y2="-8"/>
     </g>
   </g>
-  <g class="neck" data-agent="nova">
+  <g class="neck" data-agent="nova" style="--base: 300px 215px; --delay: 0s">
     <path class="neckline" d="M300 215 C 300 175, 300 135, 300 95"/>
     <text x="300" y="35">nova</text>
     <g transform="translate(300 95)">
       <ellipse class="stump" rx="12" ry="5"/>
+      <circle class="burst" r="10"/>
       <g class="head">
         <ellipse class="flesh" cx="4" cy="-14" rx="24" ry="18"/>
         <path class="flesh" d="M10 -24 L48 -15 L46 -3 L10 -2 Z"/>
@@ -114,11 +146,12 @@
       <line class="slash" x1="-22" y1="10" x2="22" y2="-8"/>
     </g>
   </g>
-  <g class="neck" data-agent="sol">
+  <g class="neck" data-agent="sol" style="--base: 350px 225px; --delay: -3.1s">
     <path class="neckline" d="M350 225 C 390 195, 490 195, 480 120"/>
     <text x="480" y="60">sol</text>
     <g transform="translate(480 120)">
       <ellipse class="stump" rx="12" ry="5"/>
+      <circle class="burst" r="10"/>
       <g class="head">
         <ellipse class="flesh" cx="4" cy="-14" rx="24" ry="18"/>
         <path class="flesh" d="M10 -24 L48 -15 L46 -3 L10 -2 Z"/>
@@ -170,11 +203,12 @@ const lastAlive = {}
 
 function renderHydra() {
   for (const id of AGENTS) {
-    const alive = state.agents[id].alive
+    const { alive, status } = state.agents[id]
+    const neck = document.querySelector(`.neck[data-agent="${id}"]`)
+    neck.classList.toggle('busy', alive && dotClass(status) === 'busy')
     const prev = lastAlive[id]
     if (prev === alive) continue
     lastAlive[id] = alive
-    const neck = document.querySelector(`.neck[data-agent="${id}"]`)
     neck.classList.toggle('dead', !alive)
     neck.classList.remove('cut', 'regrow')
     if (prev === undefined) continue
