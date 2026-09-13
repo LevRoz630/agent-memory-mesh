@@ -18,6 +18,7 @@
     "verify:takeover": "node --env-file=.env tests/live/takeover.mjs",
     "verify:tie-break": "node --env-file=.env tests/live/tie-break.mjs",
     "verify:profile": "node --env-file=.env tests/live/profile.mjs",
+    "verify:chain-watch": "node --env-file=.env tests/live/chain-watch.mjs",
     "verify:fleet": "node --env-file=.env tests/live/fleet.mjs",
     "roster": "node --env-file=.env scripts/roster.mjs"
   },

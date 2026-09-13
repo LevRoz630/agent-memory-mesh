@@ -16,6 +16,7 @@ scripts/orchestrator.mjs      the same run headless, with scheduled kills (drive
         │
         ▼
 server.mjs                    /api/demo/* + /infra/* + telemetry pushed on /live; signs and decrypts nothing
+src/chain-watch.mjs           the control room's own Arkiv subscription (entity events + block heads)
 src/fleet.mjs                 launcher: one OS process per agent, SIGKILL on power off, respawn on power on,
                               folds agent telemetry (IPC) into the control room's state
 src/infra.mjs                 simulated out-of-band power controller: DC power, rack R12 state
@@ -269,11 +270,21 @@ is `fixed` only if the lane's latest entry is a `fix` **and** the probe passes, 
 **Live.** Every change to the fleet state is pushed over the WebSocket on `/live` as a `demo`
 message; the control room renders from it. `/` redirects to `/control.html`.
 
+**Chain view.** Independently of the agents, `server.mjs` holds two Arkiv subscriptions over a
+`webSocket()` client (`ARKIV_WS_URL`, default Tiramisu's): `watchEntityEvents` and
+`watchBlockNumber`, with no `fromBlock` — either an `http()` transport or a `fromBlock` makes viem
+poll instead (`arkiv-feedback` finding 5). Events carry only key, owner and expiry, so events from
+wallets outside the roster are dropped without a read, and a roster row's role is read once with
+`getEntity` the first time its key appears. Heartbeat renewals move each agent's lease end; a row
+drops out when a new head passes its expiry block, since Arkiv emits no expiry event. The result is
+pushed on `/live` as a `chain` message and drives the heartbeat lease bars, the block number and the
+*Live from Arkiv* feed. A stream error, or 15 s without a head, resubscribes: viem reconnects a
+dropped socket but not the subscriptions on it. The agents themselves still query.
+
 **Demo.** `POST /api/demo/start` (kills any running agents, resets the power controller, launches
 three agent processes), `POST /api/demo/kill/:agentId` (cuts that DC's power),
 `GET /api/demo/report?as=<agent|outsider>` — all three behind `DEMO_PASSWORD` when set. `?as=<agent>`
-is decrypted by that agent's own process over IPC and fails if it isn't running. `GET /api/demo/state`,
-`GET /api/head` are open.
+is decrypted by that agent's own process over IPC and fails if it isn't running. `GET /api/demo/state` is open.
 
 **Power controller.** `/infra/*` as in §4, rejected without the agents' per-boot token.
 

@@ -1,16 +1,18 @@
 // Entrypoint: launches the agent processes, serves the simulated data centers' power controller they
-// call, and pushes their telemetry to the control room over the websocket on /live. It signs nothing
-// and decrypts nothing itself.
+// call, and pushes their telemetry and its own Arkiv subscription to the control room over the
+// websocket on /live. It signs nothing and decrypts nothing itself.
 
 import { createServer } from 'node:http'
 import { createECDH, randomBytes, timingSafeEqual } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
 import express from 'express'
 import { WebSocketServer } from 'ws'
-import { makePublicClient, AGENT_IDS } from './src/arkiv.mjs'
+import { makeStreamClient, AGENT_IDS } from './src/arkiv.mjs'
+import { HEARTBEAT_LEASE_BLOCKS } from './src/protocol.mjs'
 import { downloadSealed, decryptWithKey } from './src/swarm.mjs'
 import { createInfra } from './src/infra.mjs'
 import { createFleet } from './src/fleet.mjs'
+import { createChainWatch } from './src/chain-watch.mjs'
 
 const PORT = process.env.PORT || 3000
 
@@ -19,8 +21,6 @@ if (missing.length > 0) {
   console.error(`set ${missing.map((id) => `ARKIV_PRIVATE_KEY_${id.toUpperCase()}`).join(', ')}; each is handed only to that agent's process`)
   process.exit(1)
 }
-
-const pub = makePublicClient({ httpUrl: process.env.ARKIV_HTTP_URL })
 
 const app = express()
 app.use(express.json())
@@ -32,6 +32,7 @@ const liveClients = new Set()
 wss.on('connection', (ws) => {
   liveClients.add(ws)
   ws.send(JSON.stringify({ type: 'connected' }))
+  ws.send(JSON.stringify(chainMessage(chain.getState())))
   ws.on('close', () => liveClients.delete(ws))
 })
 
@@ -41,6 +42,12 @@ function broadcast(msg) {
     if (ws.readyState === ws.OPEN) ws.send(data)
   }
 }
+
+const chainMessage = (state) => ({ type: 'chain', heartbeatLeaseBlocks: HEARTBEAT_LEASE_BLOCKS, ...state })
+const chain = createChainWatch({
+  client: makeStreamClient({ wsUrl: process.env.ARKIV_WS_URL }),
+  onUpdate: (state) => broadcast(chainMessage(state)),
+})
 
 // Only the agent processes get this token, so a visitor to a public URL can't flip a data center's
 // power from outside the control room's password.
@@ -71,15 +78,6 @@ function requireInfraToken(req, res, next) {
 }
 
 app.get('/', (_req, res) => res.redirect('/control.html'))
-
-app.get('/api/head', async (_req, res) => {
-  try {
-    res.json({ head: (await pub.getBlockNumber()).toString() })
-  } catch (e) {
-    console.error('head failed:', e)
-    res.status(500).json({ error: e.message })
-  }
-})
 
 app.get('/infra/status', requireInfraToken, (_req, res) => res.json(infra.status()))
 
@@ -153,6 +151,7 @@ app.get('/api/demo/report', requireDemoPassword, async (req, res) => {
 
 process.on('SIGTERM', () => {
   fleet.stop()
+  chain.close()
   process.exit(0)
 })
 

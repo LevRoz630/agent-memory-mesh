@@ -14,7 +14,7 @@
 import { createPublicClient, createWalletClient, ExpirationTime, str, u64, stringToPayload } from '@arkiv-network/sdk'
 import { tiramisu } from '@arkiv-network/sdk/chains'
 import { and, eq, startsWith } from '@arkiv-network/sdk/query'
-import { http } from 'viem'
+import { http, webSocket } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import { nonceManager } from 'viem/nonce'
 import { isRosterAddress } from './roster.mjs'
@@ -56,6 +56,11 @@ export function makeAgentSigners({ httpUrl } = {}) {
 // Reads need a client, not an identity.
 export function makePublicClient({ httpUrl } = {}) {
   return createPublicClient({ chain: tiramisu, transport: http(httpUrl, { cacheTime: 0 }) })
+}
+
+// Subscriptions need a websocket transport: over http(), watchEntityEvents quietly polls eth_getLogs.
+export function makeStreamClient({ wsUrl } = {}) {
+  return createPublicClient({ chain: tiramisu, transport: webSocket(wsUrl) })
 }
 
 export function makeClients({ privateKey, httpUrl }) {

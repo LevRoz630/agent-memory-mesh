@@ -22,6 +22,14 @@
   .rack span.failed { background: var(--bad); }
   .dc.down .rack span { background: var(--muted); }
   .agent { font-size: 0.9rem; margin-bottom: 0.6rem; }
+  .lease { font-size: 0.75rem; color: var(--muted); margin-bottom: 0.6rem; font-variant-numeric: tabular-nums; }
+  .lease .bar { height: 6px; border-radius: 3px; background: #8883; margin-top: 0.2rem; overflow: hidden; }
+  .lease .bar span { display: block; height: 100%; background: var(--arkiv); transition: width 0.4s linear; }
+  .lease.lapsed { color: var(--bad); }
+  #feed { list-style: none; padding: 0; margin: 0; font-size: 0.85rem; }
+  #feed li { padding: 0.25rem 0; border-bottom: 1px dashed #8883; }
+  #feed .block { color: var(--muted); font-variant-numeric: tabular-nums; margin-right: 0.5rem; }
+  #feed .expired, #feed .deleted { color: var(--bad); }
   .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 0.35rem; background: var(--muted); }
   .dot.live { background: var(--ok); }
   .dot.busy { background: var(--swarm); }
@@ -167,6 +175,12 @@
 <div class="dcs" id="dcs"></div>
 
 <fieldset>
+  <legend>Live from Arkiv <span class="tag arkiv">ARKIV</span></legend>
+  <div class="sub">Subscribed to Tiramisu over a websocket, filtered to the three agents' wallets. Nothing here comes from the agents themselves.</div>
+  <ul id="feed"><li>waiting for the first event…</li></ul>
+</fieldset>
+
+<fieldset>
   <legend>Incident timeline <span class="tag arkiv">ARKIV</span></legend>
   <ul id="timeline"></ul>
 </fieldset>
@@ -208,6 +222,7 @@ const AGENTS = ['atlas', 'nova', 'sol']
 const FAILED_SLOT = 4
 
 let state = null
+let chain = null
 
 function dotClass(status) {
   if (status === 'dead' || status === 'error') return 'dead'
@@ -248,9 +263,12 @@ function render() {
       <h2>${esc(a.dc)}</h2>
       <div class="rack">${slots}</div>
       <div class="agent"><span class="dot ${dotClass(a.status)}"></span><b>${esc(id)}</b> · ${esc(a.status)}</div>
+      <div class="lease" data-lease="${esc(id)}"></div>
       <button data-kill="${esc(id)}" ${canKill ? '' : 'disabled'}>Cut power</button>
     </div>`
   }).join('')
+
+  renderChain()
 
   $('timeline').innerHTML = state.timeline.map((e) =>
     `<li><time>${esc(new Date(e.at).toLocaleTimeString())}</time><b>${esc(e.agentId)}</b> ${esc(e.text)}</li>`
@@ -268,6 +286,25 @@ function render() {
     $('openSol').disabled = true
     $('openOutsider').disabled = true
   }
+}
+
+// Every number here comes from the Arkiv subscription: the lease end from the heartbeat row's last
+// ExpiryExtended event, the head from newHeads.
+function renderChain() {
+  if (!chain) return
+  $('head').textContent = `Tiramisu block: ${chain.head ?? '—'}`
+  for (const el of document.querySelectorAll('[data-lease]')) {
+    const expiresAt = chain.heartbeats[el.dataset.lease]
+    const left = expiresAt && chain.head ? Number(BigInt(expiresAt) - BigInt(chain.head)) : 0
+    el.classList.toggle('lapsed', left <= 0)
+    el.innerHTML = `${left > 0 ? `heartbeat lease: ${left} blocks left` : 'heartbeat lease: expired'}
+      <div class="bar"><span style="width: ${Math.max(0, Math.min(100, (left / chain.heartbeatLeaseBlocks) * 100))}%"></span></div>`
+  }
+  if (chain.feed.length === 0) return
+  $('feed').innerHTML = chain.feed.map((e) => {
+    const what = e.kind === 'expired' ? `${esc(e.memoryType)} expired on its own` : e.kind === 'created' ? `wrote ${esc(e.memoryType)}` : e.kind === 'extended' ? `extended ${esc(e.memoryType)} to block ${esc(e.expiresAt)}` : `deleted ${esc(e.memoryType)}`
+    return `<li class="${esc(e.kind)}"><span class="block">#${esc(e.block)}</span><b>${esc(e.agentId)}</b> ${what} <a class="mono" target="_blank" rel="noopener" href="${EXPLORER}/entity/${url(e.entityKey)}">${esc(e.tag)}</a></li>`
+  }).join('')
 }
 
 function getStoredPassword() {
@@ -363,32 +400,23 @@ async function loadState() {
   } catch {}
 }
 
-async function pollHead() {
-  try {
-    const res = await fetch('/api/head')
-    if (!res.ok) throw new Error(`/api/head → ${res.status}`)
-    const { head } = await res.json()
-    $('head').textContent = `Tiramisu block: ${head}`
-  } catch (e) {
-    $('head').textContent = `Tiramisu block: unreachable (${e.message})`
-  }
-}
-
 function connect() {
   const proto = location.protocol === 'https:' ? 'wss' : 'ws'
   const ws = new WebSocket(`${proto}://${location.host}/live`)
   ws.onmessage = (ev) => {
     const msg = JSON.parse(ev.data)
-    if (msg.type !== 'demo') return
-    state = msg.state
-    render()
+    if (msg.type === 'chain') {
+      chain = msg
+      renderChain()
+    } else if (msg.type === 'demo') {
+      state = msg.state
+      render()
+    }
   }
   ws.onclose = () => setTimeout(() => { loadState(); connect() }, 2000)
 }
 
 loadState()
-pollHead()
-setInterval(pollHead, 2000)
 connect()
 </script>
 </body>
