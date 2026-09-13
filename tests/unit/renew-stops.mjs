@@ -14,7 +14,13 @@ const check = (name, ok) => {
 
 function fakeCtx(extendEntity) {
   let block = 100n
-  return { pub: { getBlockNumber: async () => block++ }, signers: new Map([['nova', { wallet: { extendEntity } }]]) }
+  const wallet = {
+    extendEntity,
+    account: { address: '0xabc' },
+    sender: { tail: Promise.resolve(), nextNonce: null, onBroadcast: null },
+    getTransactionCount: async () => 0,
+  }
+  return { pub: { getBlockNumber: async () => block++ }, signers: new Map([['nova', { wallet }]]) }
 }
 
 let extendCalls = 0
