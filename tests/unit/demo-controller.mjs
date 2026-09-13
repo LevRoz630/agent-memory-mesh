@@ -79,6 +79,7 @@ function fakeOps({ leaseMs, verifyFails = false, loseLeaseFor = null }) {
       claims.delete(tag)
       log.push(['finish', agentId, tag])
     },
+    async publishProfile() {},
     async isDone(tag) {
       return done.has(tag)
     },
@@ -267,6 +268,7 @@ const ops2 = {
     this.claim = null
     this.log.push(['finish', agentId])
   },
+  async publishProfile() {},
   async isDone(tag) {
     protocolCalls.push({ op: 'isDone', tag })
     return this.done
@@ -332,7 +334,7 @@ opsE.watchers.get('sol')('atlas', 'outage-atlas-run-a', { filed: false })
 await waitFor(() => demoE.getState().agents.atlas.alive, "atlas's outage to bring it back", 5000)
 check("atlas's outage is its only incident", Object.keys(demoE.getState().incidents).join() === 'outage-atlas-run-a')
 check("the outage carries atlas's last known location", demoE.getState().incidents['outage-atlas-run-a'].location === 'DC-1 Frankfurt')
-check('the timeline says where the silent agent was', demoE.getState().timeline.some((e) => e.text.includes('last beat from DC-1 Frankfurt')))
+check('the timeline says where the silent agent was', demoE.getState().timeline.some((e) => e.text.includes('sealed profile puts it in DC-1 Frankfurt')))
 
 console.log('\nscenario: the agent that filed an outage dies before fixing it\n')
 

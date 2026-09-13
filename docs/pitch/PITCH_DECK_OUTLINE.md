@@ -111,7 +111,10 @@ report has reproducible findings.
 - Content-addressed, not queryable. It doesn't need to be, because Arkiv is the index.
 
 **Speaker note:** The data an agent needs to fix the outage can't live on the machines
-that are down, and it's too sensitive to hand to a third party in the clear.
+that are down, and it's too sensitive to hand to a third party in the clear. Each agent publishes
+a sealed profile (today: its location) that peers read after it dies. In a real deployment the
+credentials themselves would probably be split 2-of-3 across peers, so no single agent can read
+them and only the survivors who agree it's dead can unlock them.
 
 ---
 

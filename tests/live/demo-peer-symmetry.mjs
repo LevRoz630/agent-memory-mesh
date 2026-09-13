@@ -103,6 +103,7 @@ check(`a peer detected the outage (${detector})`, detected && detector !== victi
 check(`a peer claimed and fixed it (${fixer})`, claimed && resolved && fixer !== victim)
 check(`a verdict was written (${verifier ?? 'n/a'}: ${verdicts[0]?.content?.outcome ?? 'see chain'})`, verified)
 check(`${victim} is back online`, backOnline)
+check(`the outage carries ${victim}'s location from its sealed profile (${state.incidents[outageTag]?.location ?? 'none'})`, Boolean(state.incidents[outageTag]?.location))
 
 // The revival has to be a consequence of the outage incident, not of anything else resolving.
 const texts = state.timeline.map((e) => `${e.agentId}|${e.text}`)

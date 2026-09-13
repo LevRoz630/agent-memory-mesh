@@ -124,10 +124,10 @@ lapsed claim *and* a lapsed heartbeat together isn't), resume from whichever lan
 progress, and finish the job itself. Sol then can't write the verdict alone — verification waits
 for atlas or nova to come back online. Once the fix lands, the data centers come back online.
 
-The peer-symmetric work above is what makes this possible at all: today the demo can only show
-DC-1 (atlas) going down once, with DC-2/DC-3 recovering it. Once wired in, any of the three data
-centers can be cut — including a worker's own DC, including a second one mid-recovery — and
-detected and recovered by whichever agent is left standing.
+Any of the three data centers can be cut — including a worker's own DC, including a second one
+mid-recovery, including DC-1 before atlas has even filed — and the outage is detected and recovered
+by whichever agents are left standing. The agent that notices reads where the silent agent was from
+its sealed profile on Swarm, and the outage incident carries that location.
 
 ## 6. Security
 
@@ -136,6 +136,15 @@ the content, the content key wrapped per roster recipient via ECIES (ephemeral E
 secp256k1 + HKDF). Each agent's own signing key doubles as its Swarm decryption identity — no
 shared secret, no shared password. This is real per-recipient cryptography, not access-control
 theater.
+
+**Passing recovery information on**: an agent can't hand anything over once it's dead, so what a
+peer needs to bring it back has to be published beforehand. Each agent keeps a profile feed on
+Swarm, sealed to the roster, at an address derived from its wallet — a peer finds it after the agent
+is gone without ever having watched it. Today that profile holds only the agent's location, the
+low-risk stand-in for the real thing. In a real deployment the sensitive part — keys, out-of-band
+access, deploy credentials — would probably be passed on differently: split 2-of-3 (Shamir), one
+share sealed to each peer. No single peer can read it while the agent is alive, and the survivors
+who agree it's dead are exactly the ones who can combine their shares to unlock recovery.
 
 **The honest caveat**: in this deployment, one process holds all three agents' keys. That makes
 the roster a *demonstrated* mechanism today, not an *enforced* boundary between adversarial
@@ -152,6 +161,7 @@ next step, and the crypto doesn't change to get there, only who holds which key.
 - Roster-scoped envelope encryption (real ECIES, not a shared key)
 - Heartbeat-based peer liveness and outage detection (any agent, not just atlas, can notice a
   peer going down)
+- A sealed per-agent profile (location) that peers read after an agent dies
 
 **Explicitly deferred, stated plainly rather than glossed over:**
 
@@ -162,8 +172,8 @@ next step, and the crypto doesn't change to get there, only who holds which key.
   filled bucket. `Stamper.fromState` exists to fix this and isn't wired up.
 - The claim tie-break narrows the race window but doesn't eliminate it under arbitrary network
   skew — a worker that goes slow rather than dying can still lose its lease mid-work.
-- Peer-symmetric detection is built and tested at the mechanism level; wiring it into the live
-  demo controller so it's demonstrable end-to-end is the one remaining step.
+- Passing real credentials on. The profile carries location only; a production deployment would
+  more likely split credentials 2-of-3 across peers so no single agent can read them.
 
 ## 8. Key numbers and facts
 

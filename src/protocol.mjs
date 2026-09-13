@@ -156,6 +156,30 @@ export async function renewClaim(ctx, agentId, entityKey, leaseBlocks = CLAIM_LE
   return { lost: false }
 }
 
+// An agent's profile (for now just its location) is a lane on its own `agent-<id>` topic, sealed to
+// the roster. The address derives from the agent's wallet alone, so a peer can read the latest entry
+// after the agent is gone without ever having watched it beat. A new entry is written only when the
+// profile changes, so the feed is one entry per move, not one per run.
+function profileTag(agentId) {
+  return `agent-${agentId}`
+}
+
+export async function publishProfile(ctx, agentId, profile) {
+  const signer = ctx.signers.get(agentId)
+  if (!signer) throw new Error(`no signer configured for agentId "${agentId}"`)
+  const address = signer.account.address
+  const index = await nextFreeLaneIndex(address, profileTag(agentId))
+  if (index > 0 && JSON.stringify(await readLane(address, profileTag(agentId), index - 1)) === JSON.stringify(profile)) return
+  await writeToLane(process.env[`ARKIV_PRIVATE_KEY_${agentId.toUpperCase()}`], address, profileTag(agentId), index, profile)
+}
+
+export async function readProfile(ctx, agentId) {
+  const address = ctx.signers.get(agentId)?.account.address
+  if (!address) return null
+  const index = await nextFreeLaneIndex(address, profileTag(agentId))
+  return index === 0 ? null : readLane(address, profileTag(agentId), index - 1)
+}
+
 export const HEARTBEAT_LEASE_BLOCKS = 8
 
 export async function startHeartbeat(ctx, agentId, shouldContinue = () => true) {
@@ -208,8 +232,9 @@ async function currentOutageTag(pub, peerId, scope) {
   return prefix + new Set(dones.map((r) => r.attributes.tag)).size
 }
 
-// onOutage(peerId, tag, { filed }) fires once per tag per watcher, whether this watcher filed the
-// row or found it already there, so every live peer can pick the incident up — not only the filer.
+// onOutage(peerId, tag, { filed, location }) fires once per tag per watcher, whether this watcher
+// filed the row or found it already there, so every live peer can pick the incident up — not only
+// the filer. `location` comes from the peer's sealed profile, null if it has none or can't be read.
 export function watchForPeerOutages(ctx, watchingAgentId, scope, onOutage) {
   const { pub, signers } = ctx
   let stopped = false
@@ -234,15 +259,16 @@ export function watchForPeerOutages(ctx, watchingAgentId, scope, onOutage) {
     if (handled.has(outageTag)) return
     const existing = await queryByTagAndType(pub, { tag: outageTag, memoryType: 'event', limit: 1 })
     const filed = existing.length === 0
+    const location = (await readProfile(ctx, peerId).catch(() => null))?.location ?? null
     if (filed) {
       const signer = signers.get(watchingAgentId)
       await writeMemory(signer.wallet, {
         agentId: watchingAgentId, memoryType: 'event', tag: outageTag, importance: 8,
-        content: { note: `${peerId} heartbeat lapsed` }, ttlBlocks: LONG_LIVED_BLOCKS,
+        content: { note: `${peerId} heartbeat lapsed`, location }, ttlBlocks: LONG_LIVED_BLOCKS,
       })
     }
     handled.add(outageTag)
-    if (!stopped) onOutage?.(peerId, outageTag, { filed })
+    if (!stopped) onOutage?.(peerId, outageTag, { filed, location })
   }
   // One failed query must not end the watch: a watcher that has quietly stopped is a peer nobody
   // is watching for the rest of the run.

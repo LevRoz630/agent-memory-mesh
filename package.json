@@ -17,6 +17,7 @@
     "verify:lane": "node --env-file=.env tests/live/lane.mjs",
     "verify:takeover": "node --env-file=.env tests/live/takeover.mjs",
     "verify:tie-break": "node --env-file=.env tests/live/tie-break.mjs",
+    "verify:profile": "node --env-file=.env tests/live/profile.mjs",
     "verify:peer-symmetry": "node --env-file=.env tests/live/demo-peer-symmetry.mjs"
   },
   "dependencies": {

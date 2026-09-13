@@ -2,7 +2,7 @@ import { writeMemory } from './memory.mjs'
 import { writeToLane, nextFreeLaneIndex } from './lane.mjs'
 import { queryByTagAndType } from './arkiv.mjs'
 import {
-  tryClaim, renewClaim, takeOver, finish as finishWork, startHeartbeat, watchForPeerOutages,
+  tryClaim, renewClaim, takeOver, finish as finishWork, startHeartbeat, watchForPeerOutages, publishProfile,
   verify as verifyWork, LONG_LIVED_BLOCKS,
 } from './protocol.mjs'
 import { WORK_STEPS } from './demo.mjs'
@@ -28,6 +28,8 @@ export function createDemoOps(ctx) {
     tryClaim: (agentId, tag) => tryClaim(ctx, agentId, tag),
 
     startHeartbeat: (agentId, shouldContinue) => startHeartbeat(ctx, agentId, shouldContinue),
+
+    publishProfile: (agentId, profile) => publishProfile(ctx, agentId, profile),
 
     watchForPeerOutages: (agentId, scope, onOutage) => watchForPeerOutages(ctx, agentId, scope, onOutage),
 

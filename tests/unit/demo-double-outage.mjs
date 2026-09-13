@@ -67,6 +67,7 @@ function fakeOps({ leaseMs }) {
       claims.delete(tag)
       log.push(['finish', agentId, tag])
     },
+    async publishProfile() {},
     async isDone(tag) {
       return done.has(tag)
     },

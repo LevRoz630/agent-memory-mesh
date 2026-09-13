@@ -238,12 +238,16 @@ export function createDemo({ ops, onUpdate = () => {}, timings = {} }) {
   function startAgentLoops(run, ctl, agentId) {
     const live = () => isLive(run, agentId)
     heartbeatLoop(run, agentId).catch((e) => event(run, agentId, `heartbeat loop stopped: ${e.message}`))
+    ops.publishProfile(agentId, { location: DATA_CENTERS[agentId] })
+      .catch((e) => event(run, agentId, `profile publish failed: ${e.message}`))
     sleep(t.watchStartDelayMs).then(() => {
       if (!live()) return
-      ctl.stopWatch[agentId] = ops.watchForPeerOutages(agentId, run.id, (peerId, outageTag, { filed = true } = {}) => {
+      ctl.stopWatch[agentId] = ops.watchForPeerOutages(agentId, run.id, (peerId, outageTag, { filed = true, location = null } = {}) => {
         if (!live()) return
-        incidentFor(run, outageTag, peerId)
-        if (filed) event(run, agentId, `noticed ${peerId} stopped beating — filed ${outageTag}`)
+        const incident = incidentFor(run, outageTag, peerId)
+        if (location) incident.location = location
+        const where = location ? `; its sealed profile puts it in ${location}` : ''
+        if (filed) event(run, agentId, `noticed ${peerId} stopped beating — filed ${outageTag}${where}`)
         spawnWorker(run, ctl, agentId, outageTag)
       })
     })

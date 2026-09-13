@@ -136,6 +136,15 @@ from it instead of restarting.
   — zero rows on two consecutive polls: that agent is down, and the watching agent files the
   outage as a new incident.
 
+### Agent profiles
+
+Each agent publishes a profile — for now only `{ location }` — to a lane on its own topic,
+`hash('hydra/agent-<id>')`, sealed to the roster. The address derives from the agent's wallet, so a
+watcher that notices an agent's heartbeat lapse reads its latest profile entry even though the agent
+is gone and even if the watcher never saw it beat. The location goes into the outage `event` row's
+content and the timeline. An agent republishes only when its profile changes. Real credentials would
+not travel this way; a production deployment would more likely split them 2-of-3 across peers.
+
 ### Outage incidents
 
 An outage tag is `outage-<agent>-<run>-<n>`. `<run>` scopes it to one run, so rows an earlier run
