@@ -117,11 +117,14 @@ requests the transport sees:
 
 The docs point the wrong way: `pollingInterval` is documented as "How often to poll … Defaults to
 half a block" with no mention that it's ignored over a websocket, and `fromBlock` ("Replay from this
-block before following the head") doesn't say it turns following the head into polling too. An app
+block before following the head") doesn't say it turns following the head into polling too. The
+SDK also doesn't forward viem's own `poll` option, so transport choice and `fromBlock` are the only
+levers a caller has. An app
 built to react "from the stream without polling" can pass review while it polls.
 
-Request: say in the JSDoc which transports subscribe, use `webSocket()` in the example, and note that
-`fromBlock` forces polling (or replay with `eth_getLogs` and then subscribe).
+Request: say in the JSDoc which transports subscribe, use `webSocket()` in the example, note that
+`fromBlock` forces polling (or replay with `eth_getLogs` and then subscribe), and forward `poll` so a
+caller can require one mode.
 
 Hydra's control room subscribes over `webSocket()` without `fromBlock` (`src/arkiv.mjs`
 `makeStreamClient`, `src/chain-watch.mjs`).
