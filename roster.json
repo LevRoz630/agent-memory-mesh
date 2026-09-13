@@ -1,0 +1,14 @@
+{
+  "atlas": {
+    "address": "0xa3D849F993765d7B434E53f76Ab4Bd6e6C214215",
+    "publicKey": "02c1d9ce3ade56bbc0539b8107119b608557c8faaca94a68c0bcc56be5f1315a2a"
+  },
+  "nova": {
+    "address": "0x992c6b62B5E2C227204FB28FFB1e88693206Cfb0",
+    "publicKey": "036335d675680d5de32534d9af6f8901a83ec6d519d1aa0513d19b5f7f465097d9"
+  },
+  "sol": {
+    "address": "0x7D75c4b534feC6c205245aF5A87A2A6Be9049d49",
+    "publicKey": "03f9af0e0da0747131aa96efe528ba6297ac5181f1f6bdbb07f38568aad5067dc5"
+  }
+}

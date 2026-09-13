@@ -22,6 +22,8 @@ import { createCipheriv, createDecipheriv, randomBytes, createECDH, hkdfSync } f
 import { Bee, BatchId, PrivateKey, Stamper } from '@ethersphere/bee-js'
 import { MantarayNode } from '@ethersphere/core-sdk'
 import { AGENT_IDS } from './arkiv.mjs'
+import { ROSTER } from './roster.mjs'
+import { createPartitionedStamper } from './stamp-slots.mjs'
 
 const GATEWAY = process.env.SWARM_GATEWAY ?? 'https://api.gateway.ethswarm.org'
 // A gateway that accepts the connection and then stalls leaves a bare fetch() pending
@@ -159,18 +161,23 @@ export function getSwarm() {
     // believe each bucket has before refusing to reuse one.
     const depth = Number(process.env.SWARM_BATCH_DEPTH ?? 23)
     bee = new Bee(GATEWAY)
-    stamper = Stamper.fromBlank(new PrivateKey(pk), new BatchId(batchId), depth)
+    // Agent processes share the batch, so each stamps only its own slots and remembers them across
+    // restarts; a fresh Stamper in two processes, or in one restarted process, would reuse slots.
+    const agentId = process.env.HYDRA_AGENT_ID
+    stamper = agentId
+      ? createPartitionedStamper({
+        signer: pk, batchId, depth, agentIndex: AGENT_IDS.indexOf(agentId), partitions: AGENT_IDS.length,
+        statePath: new URL(`../data/stamper-${agentId}.bin`, import.meta.url),
+      })
+      : Stamper.fromBlank(new PrivateKey(pk), new BatchId(batchId), depth)
   }
   return { bee, stamper }
 }
 
-// Shared by uploadMemory and src/lane.mjs's lane payloads.
+// Shared by uploadMemory and src/lane.mjs's lane payloads. Sealing needs only the roster's public
+// keys, so an agent can seal to its peers without holding their private keys.
 export function sealForRoster(plaintext) {
-  const recipients = AGENT_IDS.map((agentId, agentIndex) => {
-    const priv = agentPrivateKeyBuffer(agentId)
-    if (!priv) throw new Error(`no key configured for roster agent "${agentId}" — set ARKIV_PRIVATE_KEY_${agentId.toUpperCase()}`)
-    return { agentIndex, publicKey: derivePublicKey(priv) }
-  })
+  const recipients = AGENT_IDS.map((agentId, agentIndex) => ({ agentIndex, publicKey: Buffer.from(ROSTER[agentId].publicKey, 'hex') }))
   return encryptForRoster(plaintext, recipients)
 }
 

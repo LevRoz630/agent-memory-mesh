@@ -18,7 +18,8 @@
     "verify:takeover": "node --env-file=.env tests/live/takeover.mjs",
     "verify:tie-break": "node --env-file=.env tests/live/tie-break.mjs",
     "verify:profile": "node --env-file=.env tests/live/profile.mjs",
-    "verify:peer-symmetry": "node --env-file=.env tests/live/demo-peer-symmetry.mjs"
+    "verify:fleet": "node --env-file=.env tests/live/fleet.mjs",
+    "roster": "node --env-file=.env scripts/roster.mjs"
   },
   "dependencies": {
     "@arkiv-network/sdk": "^0.8.0",

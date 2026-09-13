@@ -17,6 +17,7 @@ import { and, eq, startsWith } from '@arkiv-network/sdk/query'
 import { http } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import { nonceManager } from 'viem/nonce'
+import { isRosterAddress } from './roster.mjs'
 
 const ATTR = {
   app: 'app',
@@ -50,6 +51,11 @@ export function makeAgentSigners({ httpUrl } = {}) {
     signers.set(agentId, { account, wallet })
   }
   return signers
+}
+
+// Reads need a client, not an identity.
+export function makePublicClient({ httpUrl } = {}) {
+  return createPublicClient({ chain: tiramisu, transport: http(httpUrl, { cacheTime: 0 }) })
 }
 
 export function makeClients({ privateKey, httpUrl }) {
@@ -106,7 +112,9 @@ export function unwrapAttributes(attrs) {
 async function runQuery(pub, pred, limit) {
   const result = await pub.select({ key: true, owner: true, expiresAt: true, attributes: true }).where(pred).limit(limit).fetch()
   const entities = Array.isArray(result) ? result : (result?.entities ?? [])
-  return entities.map((e) => ({ ...e, attributes: unwrapAttributes(e.attributes) }))
+  // Arkiv is permissionless and `app` is only a label: any wallet can write a hydra-shaped row. Only
+  // the roster's own wallets are believed, or a stranger could fake a heartbeat, a claim or a `done`.
+  return entities.filter((e) => isRosterAddress(e.owner)).map((e) => ({ ...e, attributes: unwrapAttributes(e.attributes) }))
 }
 
 export async function queryByTagAndType(pub, { tag, memoryType, limit = 20 }) {

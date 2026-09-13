@@ -4,6 +4,7 @@
 
 import { queryByTagAndType, queryByTagPrefixAndType, extendMemory, deleteMemory, AGENT_IDS } from './arkiv.mjs'
 import { writeMemory } from './memory.mjs'
+import { ROSTER } from './roster.mjs'
 import { writeToLane, readLane, nextFreeLaneIndex } from './lane.mjs'
 
 const CLAIM_LEASE_BLOCKS = 12 // long enough to fit a two-block settle window ahead of the first
@@ -174,7 +175,7 @@ export async function publishProfile(ctx, agentId, profile) {
 }
 
 export async function readProfile(ctx, agentId) {
-  const address = ctx.signers.get(agentId)?.account.address
+  const address = ROSTER[agentId]?.address
   if (!address) return null
   const index = await nextFreeLaneIndex(address, profileTag(agentId))
   return index === 0 ? null : readLane(address, profileTag(agentId), index - 1)
@@ -340,7 +341,9 @@ export async function finish(ctx, agentId, tag, entityKey, fixContent) {
   await deleteMemory(signer.wallet, { entityKey }).catch(() => {})
 }
 
-export async function verify(ctx, verifierAgentId, tag) {
+// `probe` is the verifier's own check of the world (is the rack up, does the DC have power). The
+// finisher's lane saying `fix` is its claim; the probe is what makes the verdict independent of it.
+export async function verify(ctx, verifierAgentId, tag, probe = async () => true) {
   const { pub, signers } = ctx
   const verifierSigner = signers.get(verifierAgentId)
   if (!verifierSigner) throw new Error(`no signer configured for agentId "${verifierAgentId}"`)
@@ -359,14 +362,18 @@ export async function verify(ctx, verifierAgentId, tag) {
   // Checked against the chain-enforced owner of the `done` row, not anything the caller remembers.
   const verifierAddress = verifierSigner.account.address.toLowerCase()
   if (doneRows.some((row) => row.owner.toLowerCase() === verifierAddress)) return { outcome: null, refused: true }
+  const existing = await queryByTagAndType(pub, { tag, memoryType: 'verdict', limit: 1 })
+  if (existing.length > 0) return { outcome: existing[0].attributes.outcome, alreadyVerified: true }
   const doneRow = doneRows[0]
   const lanes = await takeOver(ctx, tag)
   const finisherLane = lanes.find((l) => l.ownerAddress.toLowerCase() === doneRow.owner.toLowerCase())
-  const outcome = finisherLane?.latestContent?.kind === 'fix' ? 'fixed' : 'reopened'
-  await writeMemory(verifierSigner.wallet, {
+  const laneKind = finisherLane?.latestContent?.kind ?? 'missing'
+  const probed = await probe()
+  const outcome = laneKind === 'fix' && probed ? 'fixed' : 'reopened'
+  const written = await writeMemory(verifierSigner.wallet, {
     agentId: verifierAgentId, memoryType: 'verdict', tag, importance: 5,
-    content: { reasoning: `checked ${doneRow.owner}'s lane, found a ${finisherLane?.latestContent?.kind ?? 'missing'} entry` },
+    content: { reasoning: `checked ${doneRow.owner}'s lane, found a ${laneKind} entry; own probe ${probed ? 'passed' : 'failed'}` },
     ttlBlocks: LONG_LIVED_BLOCKS, outcome,
   })
-  return { outcome }
+  return { outcome, probed, entityKey: written.entityKey }
 }
