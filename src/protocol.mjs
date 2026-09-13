@@ -47,7 +47,8 @@ async function heartbeatIsLive(pub, agentId) {
 // goes, so they never all wait on each other.
 async function yieldsToLivePriorWorker(ctx, agentId, tag) {
   const lanes = await queryByTagAndType(ctx.pub, { tag, memoryType: 'lane' })
-  const priorWorkers = AGENT_IDS.filter((id) => lanes.some((row) => row.attributes.agent_id === id))
+  // By the chain-enforced owner, not the `agent_id` a row says about itself.
+  const priorWorkers = AGENT_IDS.filter((id) => lanes.some((row) => row.owner.toLowerCase() === ROSTER[id].address.toLowerCase()))
   for (const id of priorWorkers) {
     if (id === agentId) return false
     if (await heartbeatIsLive(ctx.pub, id)) return true
@@ -145,7 +146,8 @@ function classifyExtendError(e) {
 
 // Resolves { lost: false } when it stopped because shouldContinue() went false, and { lost: true }
 // when the lease turned out to have already lapsed — the caller must stop believing it holds the
-// claim in that case. A genuinely unexpected failure still throws.
+// claim in that case. Any other failure (an RPC hiccup) is retried on the next round: a lease that
+// really is gone reports itself as expired then.
 export async function renewClaim(ctx, agentId, entityKey, leaseBlocks = CLAIM_LEASE_BLOCKS, shouldContinue = () => true) {
   const { pub, signers } = ctx
   const signer = signers.get(agentId)
@@ -158,11 +160,9 @@ export async function renewClaim(ctx, agentId, entityKey, leaseBlocks = CLAIM_LE
     try {
       await extendMemory(signer.wallet, { entityKey, ttlBlocks: leaseBlocks })
     } catch (e) {
-      const kind = classifyExtendError(e)
-      if (kind === 'other') throw e
       // Nothing left to renew: looping on a lapsed entity would keep the caller convinced it still
       // holds a claim another agent is free to take.
-      if (kind === 'lapsed') return { lost: true, reason: e.message }
+      if (classifyExtendError(e) === 'lapsed') return { lost: true, reason: e.message }
     }
   }
   return { lost: false }
@@ -198,29 +198,22 @@ export async function startHeartbeat(ctx, agentId, shouldContinue = () => true) 
   const { pub, signers } = ctx
   const signer = signers.get(agentId)
   if (!signer) throw new Error(`no signer configured for agentId "${agentId}"`)
-  const tag = `agent-${agentId}`
   const written = await writeMemory(signer.wallet, {
-    agentId, memoryType: 'heartbeat', tag, importance: 1, content: {}, ttlBlocks: HEARTBEAT_LEASE_BLOCKS,
+    agentId, memoryType: 'heartbeat', tag: `agent-${agentId}`, importance: 1, content: {}, ttlBlocks: HEARTBEAT_LEASE_BLOCKS,
   })
-  // writeMemory returns on the tx hash, not the receipt, and a just-written row stays invisible to
-  // queries for a block or two (same lag currentWinnerKey documents). Anchoring the first wait to
-  // the write's own block keeps the first lookup below from reading that lag as "already down".
   const receipt = await pub.waitForTransactionReceipt({ hash: written.txHash })
   let anchor = receipt.blockNumber
   const renewEveryBlocks = Math.max(1, Math.floor(HEARTBEAT_LEASE_BLOCKS / 8))
   while (shouldContinue()) {
     await waitForBlock(pub, anchor + BigInt(renewEveryBlocks))
     if (!shouldContinue()) break
-    const rows = await queryByTagAndType(pub, { tag, memoryType: 'heartbeat', limit: 1 })
-    if (rows.length === 0) return // agent was already considered down elsewhere; stop renewing
+    // Only this agent's wallet can renew or delete its row, so the key it wrote is the one to extend;
+    // re-querying for it only let a momentarily empty query result restart the beat.
     try {
-      await extendMemory(signer.wallet, { entityKey: rows[0].key, ttlBlocks: HEARTBEAT_LEASE_BLOCKS })
+      await extendMemory(signer.wallet, { entityKey: written.entityKey, ttlBlocks: HEARTBEAT_LEASE_BLOCKS })
     } catch (e) {
-      const kind = classifyExtendError(e)
-      if (kind === 'other') throw e
-      // Same as the rows.length === 0 case above: the beat lapsed between the query and the extend,
-      // so this row is gone. Give up and let the caller start a fresh beat.
-      if (kind === 'lapsed') return
+      // A lapsed beat is gone for good; the caller starts a fresh one. Anything else is retried.
+      if (classifyExtendError(e) === 'lapsed') return
     }
     anchor = await pub.getBlockNumber()
   }

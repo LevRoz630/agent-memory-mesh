@@ -1,6 +1,6 @@
 // renewClaim's control flow, with no network and no env vars:
 //   - it must not extend a lease once shouldContinue() has gone false during its wait
-//   - it must tell the three extendEntity rejections apart (lapsed / too soon / unexpected)
+//   - it must tell a lapsed lease apart from failures worth retrying (too soon, an RPC hiccup)
 //
 //   node tests/unit/renew-stops.mjs
 
@@ -65,8 +65,8 @@ const tooSoon = await renewAgainst(
 check('a too-soon extension keeps looping and is not a lost lease', tooSoon.result?.lost === false && tooSoon.threw === null)
 check(`...retrying until shouldContinue() goes false (extendEntity calls: ${tooSoon.calls})`, tooSoon.calls === 3)
 
-const unrelated = await renewAgainst('Transaction failed: insufficient funds for gas')
-check('an unrelated failure is rethrown', unrelated.threw?.includes('insufficient funds') && unrelated.result === null)
+const unrelated = await renewAgainst('Transaction failed: Execution error without revert data', 3)
+check('an RPC hiccup is retried, not treated as a lost lease', unrelated.threw === null && unrelated.result?.lost === false && unrelated.calls === 3)
 
 const passed = results.every(Boolean)
 console.log(`\nRESULT: ${passed ? 'passed' : 'FAILED'}`)
