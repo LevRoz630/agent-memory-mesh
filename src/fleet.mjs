@@ -80,7 +80,9 @@ export function createFleet({ infra, infraUrl, env = process.env, script = AGENT
   }
 
   function spawnAgent(agentId) {
-    const child = fork(script, [], { env: childEnv(agentId), stdio: ['ignore', 'inherit', 'inherit', 'ipc'] })
+    // fork() reuses this process's node flags by default, and `--env-file=.env` would hand every agent
+    // every key.
+    const child = fork(script, [], { env: childEnv(agentId), execArgv: [], stdio: ['ignore', 'inherit', 'inherit', 'ipc'] })
     children.set(agentId, child)
     Object.assign(state.agents[agentId], { alive: true, status: 'booting' })
     child.on('message', (msg) => {

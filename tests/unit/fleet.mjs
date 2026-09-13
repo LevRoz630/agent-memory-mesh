@@ -3,6 +3,9 @@
 //
 //   node tests/unit/fleet.mjs
 
+import { writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createFleet } from '../../src/fleet.mjs'
 import { createInfra } from '../../src/infra.mjs'
@@ -30,6 +33,11 @@ const isRunning = (pid) => {
     return false
   }
 }
+
+// The server runs with --env-file=.env holding every key; children must not inherit that flag.
+const envFile = join(tmpdir(), `hydra-fleet-test-${process.pid}.env`)
+writeFileSync(envFile, 'ARKIV_PRIVATE_KEY_ATLAS=a\nARKIV_PRIVATE_KEY_NOVA=n\nARKIV_PRIVATE_KEY_SOL=s\n')
+process.execArgv.push(`--env-file=${envFile}`)
 
 const infra = createInfra()
 const fleet = createFleet({
