@@ -197,7 +197,7 @@ function render() {
       <h2>${esc(a.dc)}</h2>
       <div class="rack">${slots}</div>
       <div class="agent"><span class="dot ${dotClass(a.status)}"></span><b>${esc(id)}</b> · ${esc(a.status)}</div>
-      ${id === 'sol' ? '' : `<button data-kill="${esc(id)}" ${canKill ? '' : 'disabled'}>Cut power</button>`}
+      <button data-kill="${esc(id)}" ${canKill ? '' : 'disabled'}>Cut power</button>
     </div>`
   }).join('')
 
