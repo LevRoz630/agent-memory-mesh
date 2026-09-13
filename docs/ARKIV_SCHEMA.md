@@ -35,7 +35,7 @@ persists so an incident's full history survives even after every claim on it has
 
 A heartbeat lapsing is what lets a peer detect that an agent is down at all: any agent can poll
 `and(eq(app,'hydra'), eq(tag,'agent-<id>'), eq(memory_type,'heartbeat'))` for each of its peers,
-and file an `event` row on `tag: outage-<agent>-<run>-<lapse>` once that peer's heartbeat has been
+and file an `event` row on `tag: outage-<agent>-<run>-<n>` once that peer's heartbeat has been
 missing for two consecutive polls (one miss is treated as ordinary chain-index lag after a write, not
 a lapse). `<run>` keeps an earlier run's rows from standing in for this one's; `<n>` counts that peer's outages
 in the run that already have a `done` row, so watchers converge on one tag and a second death is a
