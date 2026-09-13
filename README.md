@@ -12,7 +12,7 @@ I built it at ETHRome 2026 (11–13 September).
 
 1. A rack goes down in DC-1. Atlas, the agent there, files an incident: a row on Arkiv plus an encrypted report on Swarm.
 2. The agents race to claim it. The winner holds a claim row that lasts 24 blocks and renews it while it works. Every step it finishes goes into its lane, an append-only feed on Swarm addressed from its own wallet.
-3. You cut power to the winner's data center. Its process is killed (SIGKILL, no goodbye). It stops renewing its heartbeat, and after 16 blocks the row is gone. Nothing deleted it.
+3. You cut power to the winner's data center. Its process is killed (SIGKILL). It stops renewing its heartbeat, and after 16 blocks the row is gone.
 4. A peer's query for that heartbeat comes back empty twice in a row, so it files an outage. It reads the dead agent's location from a sealed profile feed, then reads its lane and resumes from the next unfinished step.
 5. You can kill the new worker too. The last agent standing finds both lanes and continues from whichever got furthest.
 6. The survivor powers the dead data centers back on through the power controller. A revived agent checks the rack and writes the verdict. The agent that finished the fix is never allowed to verify its own work.
@@ -23,7 +23,7 @@ The control room at `/control.html` shows all of this live from an Arkiv WebSock
 
 Every Arkiv row is a real transaction on the Tiramisu testnet, and every lane entry and report is a real chunk on Swarm, stamped with our own postage batch. Killing an agent really kills its process, and peers find out only by querying Arkiv.
 
-The rest is simulated. The power controller is an HTTP stub standing in for IPMI or Redfish. The repair steps are sleeps. All three agents run on one machine, although each is a separate process holding only its own key.
+The power controller is an HTTP stub standing in for IPMI or Redfish. The repair steps are sleeps. All three agents run on one machine, although each is a separate process holding only its own key.
 
 ## Running it
 
