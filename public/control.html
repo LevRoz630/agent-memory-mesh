@@ -39,6 +39,36 @@
   .denied { color: var(--bad); font-weight: 600; }
   pre { background: #8881; padding: 0.6rem; border-radius: 6px; overflow-x: auto; font-size: 0.8rem; white-space: pre-wrap; word-break: break-all; }
   a { color: inherit; }
+  .hydra { --ink: #1a1a1a; --paper: #fff; display: block; width: 100%; max-width: 600px; margin: 1rem auto 0; color: var(--ink); }
+  @media (prefers-color-scheme: dark) { .hydra { --ink: #e8e8e8; --paper: #121212; } }
+  .hydra .flesh { fill: var(--ink); stroke: none; }
+  .hydra .neckline { fill: none; stroke: currentColor; stroke-width: 22; stroke-linecap: round; }
+  .hydra text { fill: currentColor; font-size: 14px; font-weight: 600; text-anchor: middle; }
+  .hydra .eye { fill: var(--paper); }
+  .hydra .pupil { fill: var(--swarm); }
+  .hydra .head { transform-box: fill-box; transform-origin: 50% 100%; }
+  .hydra .stump { fill: var(--bad); opacity: 0; }
+  .hydra .slash { stroke: var(--bad); stroke-width: 4; stroke-linecap: round; opacity: 0; }
+  .neck.dead .head { opacity: 0; }
+  .neck.dead .stump { opacity: 1; }
+  .neck.cut .head { animation: head-cut 0.9s ease-in; }
+  .neck.cut .stump { animation: stump-in 0.9s; }
+  .neck.cut .slash { animation: slash 0.35s; }
+  .neck.regrow .head { animation: head-regrow 1.2s ease-out; }
+  .neck.regrow .stump { animation: stump-out 0.4s; }
+  @keyframes head-cut {
+    0% { transform: none; opacity: 1; }
+    30% { transform: translateY(-4px) rotate(-8deg); opacity: 1; }
+    100% { transform: translate(20px, 80px) rotate(60deg); opacity: 0; }
+  }
+  @keyframes stump-in { 0%, 50% { opacity: 0; } 100% { opacity: 1; } }
+  @keyframes stump-out { from { opacity: 1; } to { opacity: 0; } }
+  @keyframes slash { 0% { opacity: 1; } 100% { opacity: 0; } }
+  @keyframes head-regrow {
+    0% { transform: scale(0); filter: none; }
+    60% { transform: scale(1.15); filter: drop-shadow(0 0 8px var(--ok)); }
+    100% { transform: scale(1); filter: none; }
+  }
 </style>
 </head>
 <body>
@@ -51,6 +81,55 @@
 
 <button id="startBtn">Simulate rack failure in DC-1</button>
 <span id="phase" class="mono"></span>
+
+<svg class="hydra" viewBox="0 0 600 270" role="img" aria-label="Hydra: one head per agent">
+  <ellipse class="flesh" cx="300" cy="235" rx="130" ry="30"/>
+  <g class="neck" data-agent="atlas">
+    <path class="neckline" d="M250 225 C 210 195, 110 195, 120 120"/>
+    <text x="120" y="60">atlas</text>
+    <g transform="translate(120 120) scale(-1 1)">
+      <ellipse class="stump" rx="12" ry="5"/>
+      <g class="head">
+        <ellipse class="flesh" cx="4" cy="-14" rx="24" ry="18"/>
+        <path class="flesh" d="M10 -24 L48 -15 L46 -3 L10 -2 Z"/>
+        <path class="flesh" d="M-8 -28 L-20 -48 L2 -31 Z"/>
+        <circle class="eye" cx="14" cy="-18" r="4.5"/>
+        <circle class="pupil" cx="15" cy="-18" r="2.2"/>
+      </g>
+      <line class="slash" x1="-22" y1="10" x2="22" y2="-8"/>
+    </g>
+  </g>
+  <g class="neck" data-agent="nova">
+    <path class="neckline" d="M300 215 C 300 175, 300 135, 300 95"/>
+    <text x="300" y="35">nova</text>
+    <g transform="translate(300 95)">
+      <ellipse class="stump" rx="12" ry="5"/>
+      <g class="head">
+        <ellipse class="flesh" cx="4" cy="-14" rx="24" ry="18"/>
+        <path class="flesh" d="M10 -24 L48 -15 L46 -3 L10 -2 Z"/>
+        <path class="flesh" d="M-8 -28 L-20 -48 L2 -31 Z"/>
+        <circle class="eye" cx="14" cy="-18" r="4.5"/>
+        <circle class="pupil" cx="15" cy="-18" r="2.2"/>
+      </g>
+      <line class="slash" x1="-22" y1="10" x2="22" y2="-8"/>
+    </g>
+  </g>
+  <g class="neck" data-agent="sol">
+    <path class="neckline" d="M350 225 C 390 195, 490 195, 480 120"/>
+    <text x="480" y="60">sol</text>
+    <g transform="translate(480 120)">
+      <ellipse class="stump" rx="12" ry="5"/>
+      <g class="head">
+        <ellipse class="flesh" cx="4" cy="-14" rx="24" ry="18"/>
+        <path class="flesh" d="M10 -24 L48 -15 L46 -3 L10 -2 Z"/>
+        <path class="flesh" d="M-8 -28 L-20 -48 L2 -31 Z"/>
+        <circle class="eye" cx="14" cy="-18" r="4.5"/>
+        <circle class="pupil" cx="15" cy="-18" r="2.2"/>
+      </g>
+      <line class="slash" x1="-22" y1="10" x2="22" y2="-8"/>
+    </g>
+  </g>
+</svg>
 
 <div class="dcs" id="dcs"></div>
 
@@ -87,8 +166,26 @@ function dotClass(status) {
   return 'live'
 }
 
+const lastAlive = {}
+
+function renderHydra() {
+  for (const id of AGENTS) {
+    const alive = state.agents[id].alive
+    const prev = lastAlive[id]
+    if (prev === alive) continue
+    lastAlive[id] = alive
+    const neck = document.querySelector(`.neck[data-agent="${id}"]`)
+    neck.classList.toggle('dead', !alive)
+    neck.classList.remove('cut', 'regrow')
+    if (prev === undefined) continue
+    void neck.getBoundingClientRect()
+    neck.classList.add(alive ? 'regrow' : 'cut')
+  }
+}
+
 function render() {
   if (!state) return
+  renderHydra()
   $('phase').textContent = state.tag ? ` ${state.tag} · ${state.phase}` : ''
 
   $('dcs').innerHTML = AGENTS.map((id) => {
