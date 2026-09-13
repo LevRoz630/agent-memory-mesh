@@ -17,7 +17,7 @@ In-memory state: `dcs: { atlas|nova|sol: { power: 'on'|'off' } }`, `racks: { R12
 `reset()` powers every DC on and sets R12 down. Mounted by the server:
 
 - `GET  /infra/status` → `{ dcs, racks }`
-- `POST /infra/dc/:id/power` body `{ state: 'on'|'off' }` → calls the fleet's `powerOff`/`powerOn`
+- `POST /infra/dc/:id/power` body `{ power: 'on'|'off' }` → calls the fleet's `powerOff`/`powerOn`
 - `POST /infra/rack/:id/power-cycle` → rack `up` (only if its DC has power)
 
 These routes stand in for IPMI/Redfish. Agents call them over HTTP; they are unauthenticated and
