@@ -216,6 +216,8 @@ export async function startHeartbeat(ctx, agentId, shouldContinue = () => true) 
 
 const PEER_WATCH_POLL_MS = 4000
 const EMPTY_POLLS_BEFORE_OUTAGE = 2
+// One heartbeat lease at Tiramisu's ~2s blocks.
+const REVIVAL_GRACE_MS = HEARTBEAT_LEASE_BLOCKS * 2000
 
 export function outageTagPrefix(peerId, scope) {
   return `outage-${peerId}-${scope}-`
@@ -245,6 +247,8 @@ export function watchForPeerOutages(ctx, watchingAgentId, scope, onOutage) {
   // Our own just-filed incident is invisible to the existence check below for a block or two, so
   // the on-chain check alone would let the next poll file a second one.
   const handled = new Set()
+  const lastHandled = new Map()
+  const graceUntil = new Map()
   const pollPeer = async (peerId) => {
     const heartbeats = await queryByTagAndType(pub, { tag: `agent-${peerId}`, memoryType: 'heartbeat', limit: 1 })
     if (heartbeats.length > 0) {
@@ -257,6 +261,11 @@ export function watchForPeerOutages(ctx, watchingAgentId, scope, onOutage) {
 
     const outageTag = await currentOutageTag(pub, peerId, scope)
     if (handled.has(outageTag)) return
+    // A new tag after one this watcher handled means that outage was just finished and the peer is
+    // being brought back. Its new heartbeat takes a write and a block or two to show, so it gets one
+    // lease to beat again before its silence counts as another outage.
+    if (lastHandled.has(peerId) && !graceUntil.has(outageTag)) graceUntil.set(outageTag, Date.now() + REVIVAL_GRACE_MS)
+    if (Date.now() < (graceUntil.get(outageTag) ?? 0)) return
     const existing = await queryByTagAndType(pub, { tag: outageTag, memoryType: 'event', limit: 1 })
     const filed = existing.length === 0
     const location = (await readProfile(ctx, peerId).catch(() => null))?.location ?? null
@@ -268,6 +277,7 @@ export function watchForPeerOutages(ctx, watchingAgentId, scope, onOutage) {
       })
     }
     handled.add(outageTag)
+    lastHandled.set(peerId, outageTag)
     if (!stopped) onOutage?.(peerId, outageTag, { filed, location })
   }
   // One failed query must not end the watch: a watcher that has quietly stopped is a peer nobody
