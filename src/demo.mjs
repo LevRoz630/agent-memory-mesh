@@ -100,23 +100,28 @@ export function createDemo({ ops, onUpdate = () => {}, timings = {} }) {
       const renewal = ops.renewClaim(agentId, claim.entityKey, () => working && live())
         .then((result) => { if (result?.lost) leaseLost = true })
         .catch((e) => event(run, agentId, `lease renewal failed: ${e.message}`))
-      let step = await ops.readProgress(tag)
-      if (step > 0) event(run, agentId, `found ${step}/${WORK_STEPS.length} steps already done on Swarm, resuming`)
-      // Continues this agent's own lane rather than restarting it at 0, which would overwrite what it
-      // published before a lapsed lease.
-      let laneIndex = await ops.nextLaneIndex(agentId, tag)
-      while (step < WORK_STEPS.length && !leaseLost) {
-        await sleep(t.stepMs)
-        if (!live()) return
-        if (leaseLost) break
-        await ops.recordStep(agentId, tag, step, laneIndex)
-        laneIndex += 1
-        step += 1
-        incident.stepsDone = step
-        if (tag === run.tag) run.stepsDone = step
-        event(run, agentId, `step ${step}/${WORK_STEPS.length}: ${WORK_STEPS[step - 1]}`)
+      // A step that throws must also stop the renewal, or the claim never lapses for a restarted
+      // worker or anyone else to take.
+      try {
+        let step = await ops.readProgress(tag)
+        if (step > 0) event(run, agentId, `found ${step}/${WORK_STEPS.length} steps already done on Swarm, resuming`)
+        // Continues this agent's own lane rather than restarting it at 0, which would overwrite what
+        // it published before a lapsed lease.
+        let laneIndex = await ops.nextLaneIndex(agentId, tag)
+        while (step < WORK_STEPS.length && !leaseLost) {
+          await sleep(t.stepMs)
+          if (!live()) return
+          if (leaseLost) break
+          await ops.recordStep(agentId, tag, step, laneIndex)
+          laneIndex += 1
+          step += 1
+          incident.stepsDone = step
+          if (tag === run.tag) run.stepsDone = step
+          event(run, agentId, `step ${step}/${WORK_STEPS.length}: ${WORK_STEPS[step - 1]}`)
+        }
+      } finally {
+        working = false
       }
-      working = false
       await renewal
       if (!live()) return
       // Whatever was finished is already published to this agent's lane, so the next holder resumes
@@ -155,16 +160,22 @@ export function createDemo({ ops, onUpdate = () => {}, timings = {} }) {
     }
   }
 
+  // A worker that crashed on a Swarm or RPC error comes back after retryMs. It has to: a live agent
+  // that has worked an incident keeps the right to resume it (protocol tryClaim), so while it is
+  // alive nobody else will take over.
   function spawnWorker(run, ctl, agentId, tag) {
     const key = `${agentId}:${tag}`
     if (ctl.working.has(key)) return
     ctl.working.add(key)
     worker(run, ctl, agentId, tag)
-      .catch((e) => {
+      .then(() => ctl.working.delete(key), (e) => {
+        ctl.working.delete(key)
         run.agents[agentId].status = 'error'
         event(run, agentId, `error: ${e.message}`)
+        return sleep(t.retryMs).then(() => {
+          if (isLive(run, agentId) && run.incidents[tag]?.phase !== 'resolved') spawnWorker(run, ctl, agentId, tag)
+        })
       })
-      .finally(() => ctl.working.delete(key))
   }
 
   // Whichever live agent polls first and sees a `done` row writes the verdict — never the agent
@@ -214,13 +225,14 @@ export function createDemo({ ops, onUpdate = () => {}, timings = {} }) {
   async function heartbeatLoop(run, agentId) {
     const live = () => isLive(run, agentId)
     while (live()) {
+      // A beat that lapsed is written again at once: waiting would leave a gap long enough for two
+      // peer polls to read a live agent as down. Only a failed write waits before retrying.
       try {
         await ops.startHeartbeat(agentId, live)
       } catch (e) {
         event(run, agentId, `heartbeat interrupted: ${e.message}`)
+        if (live()) await sleep(t.retryMs)
       }
-      if (!live()) return
-      await sleep(t.retryMs)
     }
   }
 
@@ -253,7 +265,7 @@ export function createDemo({ ops, onUpdate = () => {}, timings = {} }) {
     event(run, agentId, `${agent.dc} back online, ${agentId} is watching again`)
     startAgentLoops(run, ctl, agentId)
     for (const incident of Object.values(run.incidents)) {
-      if (incident.phase !== 'resolved') spawnWorker(run, ctl, agentId, incident.tag)
+      if (incident.phase !== 'resolved' && incident.subject !== agentId) spawnWorker(run, ctl, agentId, incident.tag)
     }
   }
 

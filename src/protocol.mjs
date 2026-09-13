@@ -209,18 +209,17 @@ export function outageTagPrefix(peerId, scope) {
   return `outage-${peerId}-${scope}-`
 }
 
-async function openOutageTags(pub, prefix) {
-  const events = await queryByTagPrefixAndType(pub, { tagPrefix: prefix, memoryType: 'event' })
-  const dones = new Set((await queryByTagPrefixAndType(pub, { tagPrefix: prefix, memoryType: 'done' })).map((r) => r.attributes.tag))
-  return [...new Set(events.map((r) => r.attributes.tag))].filter((tag) => !dones.has(tag))
+// The nth outage of a peer in a run is `outage-<peer>-<scope>-<n>`, where n counts that peer's
+// outages in this run that already have a `done` row. Every watcher reads n from the chain, so they
+// converge on one tag instead of each naming the outage from what it happened to see. A dead peer
+// only comes back by its outage being finished, so dying again after that is outage n+1. `scope`
+// (the demo run's id) keeps rows an earlier run left on chain from passing for this one's.
+async function currentOutageTag(pub, peerId, scope) {
+  const prefix = outageTagPrefix(peerId, scope)
+  const dones = await queryByTagPrefixAndType(pub, { tagPrefix: prefix, memoryType: 'done' })
+  return prefix + new Set(dones.map((r) => r.attributes.tag)).size
 }
 
-// An outage tag is `outage-<peer>-<scope>-<lapse>`. `scope` (the demo run's id) keeps rows left on
-// chain by an earlier run from passing for this one's. `lapse` is the peer's last heartbeat row
-// this watcher saw: every watcher that saw the same row converges on the same tag, and a peer that
-// comes back beats on a new row, so dying again is a new incident. A watcher that never saw the
-// peer beat joins any open outage for it, or files `start` if there is none.
-//
 // onOutage(peerId, tag, { filed }) fires once per tag per watcher, whether this watcher filed the
 // row or found it already there, so every live peer can pick the incident up — not only the filer.
 export function watchForPeerOutages(ctx, watchingAgentId, scope, onOutage) {
@@ -230,43 +229,45 @@ export function watchForPeerOutages(ctx, watchingAgentId, scope, onOutage) {
   // invisible to queries for a block or two (the same lag startHeartbeat anchors around). Only a
   // second consecutive empty poll for the same peer separates chain-index lag from a real lapse.
   const emptyPolls = new Map()
-  const lastBeat = new Map()
   // Our own just-filed incident is invisible to the existence check below for a block or two, so
   // the on-chain check alone would let the next poll file a second one.
   const handled = new Set()
+  const pollPeer = async (peerId) => {
+    const heartbeats = await queryByTagAndType(pub, { tag: `agent-${peerId}`, memoryType: 'heartbeat', limit: 1 })
+    if (heartbeats.length > 0) {
+      emptyPolls.set(peerId, 0)
+      return
+    }
+    const misses = (emptyPolls.get(peerId) ?? 0) + 1
+    emptyPolls.set(peerId, misses)
+    if (misses < EMPTY_POLLS_BEFORE_OUTAGE) return
+
+    const outageTag = await currentOutageTag(pub, peerId, scope)
+    if (handled.has(outageTag)) return
+    const existing = await queryByTagAndType(pub, { tag: outageTag, memoryType: 'event', limit: 1 })
+    const filed = existing.length === 0
+    if (filed) {
+      const signer = signers.get(watchingAgentId)
+      await writeMemory(signer.wallet, {
+        agentId: watchingAgentId, memoryType: 'event', tag: outageTag, importance: 8,
+        content: { note: `${peerId} heartbeat lapsed` }, ttlBlocks: LONG_LIVED_BLOCKS,
+      })
+    }
+    handled.add(outageTag)
+    if (!stopped) onOutage?.(peerId, outageTag, { filed })
+  }
+  // One failed query must not end the watch: a watcher that has quietly stopped is a peer nobody
+  // is watching for the rest of the run.
   const loop = async () => {
     while (!stopped) {
       for (const peerId of AGENT_IDS) {
         if (stopped) return
         if (peerId === watchingAgentId) continue
-        const heartbeats = await queryByTagAndType(pub, { tag: `agent-${peerId}`, memoryType: 'heartbeat', limit: 1 })
-        if (heartbeats.length > 0) {
-          emptyPolls.set(peerId, 0)
-          lastBeat.set(peerId, heartbeats[0].key.slice(2, 10))
-          continue
+        try {
+          await pollPeer(peerId)
+        } catch (e) {
+          console.error(`watchForPeerOutages(${watchingAgentId}) poll of ${peerId} failed:`, e.message)
         }
-        const misses = (emptyPolls.get(peerId) ?? 0) + 1
-        emptyPolls.set(peerId, misses)
-        if (misses < EMPTY_POLLS_BEFORE_OUTAGE) continue
-
-        const prefix = outageTagPrefix(peerId, scope)
-        const outageTag = lastBeat.has(peerId)
-          ? prefix + lastBeat.get(peerId)
-          : (await openOutageTags(pub, prefix))[0] ?? `${prefix}start`
-        if (handled.has(outageTag)) continue
-
-        const existing = await queryByTagAndType(pub, { tag: outageTag, memoryType: 'event', limit: 1 })
-        const filed = existing.length === 0
-        if (filed) {
-          const signer = signers.get(watchingAgentId)
-          await writeMemory(signer.wallet, {
-            agentId: watchingAgentId, memoryType: 'event', tag: outageTag, importance: 8,
-            content: { note: `${peerId} heartbeat lapsed` }, ttlBlocks: LONG_LIVED_BLOCKS,
-          })
-        }
-        handled.add(outageTag)
-        if (stopped) return
-        onOutage?.(peerId, outageTag, { filed })
       }
       await sleep(PEER_WATCH_POLL_MS)
     }

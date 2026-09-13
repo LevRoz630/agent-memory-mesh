@@ -48,7 +48,7 @@ Chain: Tiramisu. One entity type, `agent_memory`, seven possible attributes (sna
 | `app`         | `str` | `hydra` — constant |
 | `agent_id`    | `str` | `atlas` / `nova` / `sol` |
 | `memory_type` | `str` | `event` / `claim` / `lane` / `done` / `verdict` / `heartbeat` |
-| `tag`         | `str` | `incident-<run>` or `outage-<agent>-<run>-<lapse>` for incident rows; `agent-<agent>` for a heartbeat |
+| `tag`         | `str` | `incident-<run>` or `outage-<agent>-<run>-<n>` for incident rows; `agent-<agent>` for a heartbeat |
 | `importance`  | `u64` | 0–10 |
 | `swarm_ref`   | `str` | 64-hex Swarm reference |
 | `outcome`     | `str` | `fixed` / `reopened` — `verdict` rows only |
@@ -152,16 +152,16 @@ from it instead of restarting.
 
 ### Outage incidents
 
-An outage tag is `outage-<agent>-<run>-<lapse>`. `<run>` scopes it to one run, so rows an earlier
-run left on chain never pass for this one's. `<lapse>` is the dead agent's last heartbeat row the
-watcher saw: every watcher that saw the same row converges on the same tag, and an agent that comes
-back beats on a new row, so dying again is a new incident. A watcher that never saw the agent beat
-(it was cut before any watcher started) joins an open outage for that agent in the run, or files
-`<lapse> = start`.
+An outage tag is `outage-<agent>-<run>-<n>`. `<run>` scopes it to one run, so rows an earlier run
+left on chain never pass for this one's. `<n>` is the number of that agent's outages in this run
+that already have a `done` row, read from the chain, so every watcher arrives at the same tag. A
+dead agent only comes back by its outage being finished, so dying again after that is outage
+`n+1`, a new incident.
 
 Every live peer that sees an outage works it — whether it filed the row or found it already there —
 so the incident survives its filer dying too. Finishing an agent's outage brings that agent back,
-and a revived agent rejoins every incident still open.
+and a revived agent rejoins every incident still open. A worker that crashes on a Swarm or RPC error
+stops renewing its claim and restarts after a short backoff, and a watcher survives a failed poll.
 
 ### Lifecycle
 
@@ -275,8 +275,8 @@ Arkiv's metadata (who claimed what, when) needs no key at all — it's already p
 - The Swarm `Stamper`'s bucket counters are in-memory only; a restart can eventually re-stamp a
   filled bucket.
 - The claim tie-break narrows the race window but doesn't eliminate it under arbitrary network
-  skew. A prior worker whose heartbeat is live but whose loop has stopped (a crashed worker in a
-  live process) holds newcomers off an incident until its heartbeat lapses.
+  skew. A prior worker whose heartbeat is live but whose worker loop hangs (rather than throwing)
+  holds newcomers off an incident until its heartbeat lapses.
 - All three agents' keys and the auditor's key can sit in the same process/`.env`; real isolation
   between them requires separate processes with separate custody, which isn't built. The server
   holding the agent keys signs `POST /api/memory` for whichever `agentId` the caller names, and

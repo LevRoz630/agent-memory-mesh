@@ -11,7 +11,7 @@ entirely in its attributes — there is no separate on-chain type per role. Full
 | `app`         | `str` | `hydra` — constant; lets the whole index be selected with one `eq`  |
 | `agent_id`    | `str` | `atlas` \| `nova` \| `sol`                                        |
 | `memory_type` | `str` | `event` \| `claim` \| `lane` \| `done` \| `verdict` \| `heartbeat` — whitelisted client-side, nothing else accepted |
-| `tag`         | `str` | `incident-<run>` for atlas's rack incident; `outage-<agent>-<run>-<lapse>` for an outage a peer filed about a lapsed heartbeat (both shared by the first five roles); `agent-<agent>` for a `heartbeat` |
+| `tag`         | `str` | `incident-<run>` for atlas's rack incident; `outage-<agent>-<run>-<n>` for an outage a peer filed about a lapsed heartbeat (both shared by the first five roles); `agent-<agent>` for a `heartbeat` |
 | `importance`  | `u64` | 0–10, supports `gte` filtering                                     |
 | `swarm_ref`   | `str` | 64-hex Swarm chunk address; every row has one, even `claim`         |
 | `outcome`     | `str` | `fixed` \| `reopened` — present only on `verdict` rows              |
@@ -37,8 +37,9 @@ A heartbeat lapsing is what lets a peer detect that an agent is down at all: any
 `and(eq(app,'hydra'), eq(tag,'agent-<id>'), eq(memory_type,'heartbeat'))` for each of its peers,
 and file an `event` row on `tag: outage-<agent>-<run>-<lapse>` once that peer's heartbeat has been
 missing for two consecutive polls (one miss is treated as ordinary chain-index lag after a write, not
-a lapse). `<run>` keeps an earlier run's rows from standing in for this one's; `<lapse>` is the last
-heartbeat row the watcher saw, so watchers converge on one tag and a second death is a new incident.
+a lapse). `<run>` keeps an earlier run's rows from standing in for this one's; `<n>` counts that peer's outages
+in the run that already have a `done` row, so watchers converge on one tag and a second death is a
+new incident.
 
 The same query guards a takeover: before claiming, an agent checks the heartbeat of every agent with
 a `lane` row on the incident. A live one is slow, not dead, and keeps the right to resume.
@@ -51,7 +52,7 @@ so "everything" is `eq(app, 'hydra')` rather than an unfiltered scan.
 - **Is anyone alive on this incident?** `and(eq(app,'hydra'), eq(tag,'incident-42'), eq(memory_type,'claim'))` — zero rows means free to take; one row means its owner holds it, provably (owner-gated by the engine, not by convention).
 - **Who has ever worked it, and what did they produce?** `and(eq(app,'hydra'), eq(tag,'incident-42'), eq(memory_type,'lane'))` for the *who*; each owner's Swarm lane (topic `hash('hydra/incident-42')`) for the *what*.
 - **Has it been checked?** `and(eq(app,'hydra'), eq(tag,'incident-42'), eq(memory_type,'verdict'))`.
-- **Which outages are open for a peer in this run?** `and(eq(app,'hydra'), startsWith(tag,'outage-nova-<run>-'), eq(memory_type,'event'))`, minus tags that have a `done` row.
+- **Which outage number is next for a peer in this run?** `and(eq(app,'hydra'), startsWith(tag,'outage-nova-<run>-'), eq(memory_type,'done'))` — the count of distinct tags.
 - **Is a given peer still alive?** `and(eq(app,'hydra'), eq(tag,'agent-nova'), eq(memory_type,'heartbeat'))` — zero rows on two consecutive polls means that agent is down.
 
 ## Expiry as the mechanism, not a cleanup job
