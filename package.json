@@ -20,6 +20,9 @@
     "verify:profile": "node --env-file=.env tests/live/profile.mjs",
     "verify:chain-watch": "node --env-file=.env tests/live/chain-watch.mjs",
     "verify:fleet": "node --env-file=.env tests/live/fleet.mjs",
+    "verify:claim-lapse": "node --env-file=.env tests/live/claim-lapse.mjs",
+    "verify:heartbeat-lapse": "node --env-file=.env tests/live/heartbeat-lapse.mjs",
+    "verify:peer-outage": "node --env-file=.env tests/live/peer-outage-detection.mjs",
     "roster": "node --env-file=.env scripts/roster.mjs"
   },
   "dependencies": {

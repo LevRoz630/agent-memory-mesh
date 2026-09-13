@@ -114,22 +114,29 @@ export function createAgent({ agentId, runId, ops, send = () => {}, timings = {}
         await sleep(t.retryMs)
         continue
       }
-      event(`claimed ${tag} on Arkiv`, { entityKey: claim.entityKey })
+      event(`claimed ${tag} on Arkiv`, { tag, entityKey: claim.entityKey })
       setStatus('working')
       let workingOn = true
       let leaseLost = false
       let lostReason = ''
+      // Renewal runs until finish() returns: the `done` row is what closes the incident, and a claim
+      // that lapses before it lands lets a peer redo the work.
       const renewal = ops.renewClaim(agentId, claim.entityKey, () => workingOn && live())
         .then((result) => {
           if (!result?.lost) return
           leaseLost = true
-          lostReason = result.reason ? ` (${result.reason})` : ''
+          lostReason = `its lease lapsed${result.reason ? ` (${result.reason})` : ''}`
         })
-        .catch((e) => event(`lease renewal failed: ${e.message}`))
+        .catch((e) => {
+          // Without renewals the claim lapses while this agent keeps working and a peer takes over.
+          leaseLost = true
+          lostReason = `its lease could not be renewed (${e.message})`
+        })
       let failure = null
+      let finished = false
       try {
         let step = await ops.readProgress(tag)
-        if (step > 0) event(`found ${step}/${steps.length} steps already done on Swarm, resuming`)
+        if (step > 0) event(`found ${step}/${steps.length} steps already done on Swarm, resuming`, { tag })
         let laneIndex = await ops.nextLaneIndex(agentId, tag)
         while (step < steps.length && !leaseLost) {
           await sleep(t.stepMs)
@@ -139,7 +146,12 @@ export function createAgent({ agentId, runId, ops, send = () => {}, timings = {}
           laneIndex += 1
           step += 1
           track(tag, { stepsDone: step })
-          event(`step ${step}/${steps.length}: ${steps[step - 1]}`)
+          event(`step ${step}/${steps.length}: ${steps[step - 1]}`, { tag })
+        }
+        if (live() && !leaseLost && step === steps.length) {
+          ownFixes.add(tag)
+          await ops.finish(agentId, tag, claim.entityKey)
+          finished = true
         }
       } catch (e) {
         failure = e
@@ -148,31 +160,23 @@ export function createAgent({ agentId, runId, ops, send = () => {}, timings = {}
       }
       await renewal
       if (!live()) return
-      // Leaving the claim to expire would hold every peer off the incident for a whole lease.
-      if (failure && !leaseLost) {
+      if (!finished) {
+        // Leaving the claim to expire would hold every peer off the incident for a whole lease.
         await ops.releaseClaim(agentId, claim.entityKey).catch(() => {})
-        event(`could not finish ${tag}: ${failure.message}; released the claim`)
+        event(`could not finish ${tag}: ${failure ? failure.message : lostReason}; released the claim`, { tag })
         setStatus('waiting')
-        await sleep(t.failedStepBackoffMs)
+        await sleep(failure ? t.failedStepBackoffMs : t.retryMs)
         continue
       }
-      if (leaseLost) {
-        event(`lease on ${tag} lapsed before the work finished, dropping the claim${lostReason}`)
-        setStatus('waiting')
-        await sleep(t.retryMs)
-        continue
-      }
-      ownFixes.add(tag)
-      await ops.finish(agentId, tag, claim.entityKey)
       closed.add(tag)
       track(tag, { phase: 'resolved', resolvedBy: agentId })
       setStatus('done')
-      event(`${tag} resolved`)
+      event(`${tag} resolved`, { tag })
       try {
         const receiptRef = await ops.publishReceipt({
           tag, phase: 'resolved', report: incident.report ?? null,
           agents: { [agentId]: { status: 'done' } },
-          timeline: timeline.filter((e) => e.text.includes(tag) || e.text.startsWith('step ')),
+          timeline: timeline.filter((e) => e.tag === tag),
         })
         track(tag, { receiptRef })
         event('published a public receipt on Swarm', { swarmRef: receiptRef })
@@ -256,7 +260,7 @@ export function createAgent({ agentId, runId, ops, send = () => {}, timings = {}
             ownFixes.add(tag)
             continue
           }
-          track(tag, { phase: 'resolved', verdict: result.outcome })
+          track(tag, { phase: result.outcome === 'fixed' ? 'resolved' : 'reopened', verdict: result.outcome })
           if (!result.alreadyVerified) event(`verified ${tag}: ${result.outcome}`, { entityKey: result.entityKey })
         } catch (e) {
           const attempts = (verifyFailures.get(tag) ?? 0) + 1

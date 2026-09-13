@@ -2,7 +2,7 @@
 // round-robin across partitions, so partition i only ever uses slots n*partitions + i, and the
 // per-bucket counters are written to disk after every stamp so a restart resumes past them.
 
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { stamp } from '@ethersphere/core-sdk'
@@ -23,6 +23,7 @@ export function createPartitionedStamper({ signer, batchId, depth, agentIndex, p
   if (!(agentIndex >= 0 && agentIndex < partitions)) throw new Error(`agent index ${agentIndex} is outside ${partitions} partitions`)
   const counts = loadCounts(statePath)
   const maxSlot = 2 ** (depth - 16)
+  const tmpPath = `${fileURLToPath(statePath)}.tmp`
   mkdirSync(dirname(fileURLToPath(statePath)), { recursive: true })
   return {
     stamp(address) {
@@ -31,7 +32,10 @@ export function createPartitionedStamper({ signer, batchId, depth, agentIndex, p
       if (slot >= maxSlot) throw new Error(`bucket ${bucket} has no free slot left for agent index ${agentIndex}`)
       const envelope = stamp(signer, batchId, address, slot)
       counts[bucket] += 1
-      writeFileSync(statePath, Buffer.from(counts.buffer))
+      // The fleet SIGKILLs agents, and a kill between truncate and write would leave a short file that
+      // no restart could load. A rename is atomic.
+      writeFileSync(tmpPath, Buffer.from(counts.buffer))
+      renameSync(tmpPath, statePath)
       return envelope
     },
   }

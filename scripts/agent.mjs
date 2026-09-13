@@ -31,6 +31,9 @@ for (const id of signers.keys()) {
 const send = (msg) => (process.send ? process.send(msg) : console.log(JSON.stringify(msg)))
 const ops = createDemoOps({ pub: makePublicClient({ httpUrl }), signers, infraUrl })
 
+// A launcher that died can't stop its agents any more, so they must not keep writing on their own.
+process.on('disconnect', () => process.exit(0))
+
 process.on('message', async (msg) => {
   if (msg?.type !== 'decrypt') return
   try {

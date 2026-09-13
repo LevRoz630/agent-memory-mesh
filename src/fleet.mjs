@@ -54,10 +54,11 @@ export function createFleet({ infra, infraUrl, env = process.env, script = AGENT
       const prev = state.incidents[incident.tag] ?? {}
       // Every agent reports its own view; a resolution or verdict from one must not be undone by
       // another that has not seen it yet.
+      const verdict = prev.verdict ?? incident.verdict
       const merged = {
         ...prev, ...incident,
-        phase: prev.phase === 'resolved' ? 'resolved' : (incident.phase ?? prev.phase),
-        verdict: prev.verdict ?? incident.verdict,
+        phase: verdict ? (verdict === 'fixed' ? 'resolved' : 'reopened') : prev.phase === 'resolved' ? 'resolved' : (incident.phase ?? prev.phase),
+        verdict,
         receiptRef: prev.receiptRef ?? incident.receiptRef,
         resolvedBy: prev.resolvedBy ?? incident.resolvedBy,
         report: prev.report ?? incident.report,

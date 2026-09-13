@@ -9,7 +9,7 @@ import express from 'express'
 import { WebSocketServer } from 'ws'
 import { makeStreamClient, AGENT_IDS } from './src/arkiv.mjs'
 import { HEARTBEAT_LEASE_BLOCKS } from './src/protocol.mjs'
-import { downloadSealed, decryptWithKey } from './src/swarm.mjs'
+import { downloadSealed, decryptWithKey, GATEWAY } from './src/swarm.mjs'
 import { createInfra } from './src/infra.mjs'
 import { createFleet } from './src/fleet.mjs'
 import { createChainWatch } from './src/chain-watch.mjs'
@@ -31,7 +31,7 @@ const wss = new WebSocketServer({ server: httpServer, path: '/live' })
 const liveClients = new Set()
 wss.on('connection', (ws) => {
   liveClients.add(ws)
-  ws.send(JSON.stringify({ type: 'connected' }))
+  ws.send(JSON.stringify({ type: 'connected', swarmGateway: GATEWAY }))
   ws.send(JSON.stringify(chainMessage(chain.getState())))
   ws.on('close', () => liveClients.delete(ws))
 })

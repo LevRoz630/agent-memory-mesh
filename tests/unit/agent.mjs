@@ -13,7 +13,7 @@ const LEASE_MS = 150
 const SILENCE_MS = 80
 const TIMINGS = { stepMs: 30, retryMs: 20, failedStepBackoffMs: 40, pollMs: 20, watchStartDelayMs: 40, monitorStartDelayMs: 10 }
 
-function createWorld() {
+function createWorld({ renewalFailsOnce = false, onFinish = () => {} } = {}) {
   const runId = String(Date.now())
   const infra = createInfra()
   const chain = { events: new Map(), claims: new Map(), done: new Map(), verdicts: new Map(), lastBeat: new Map() }
@@ -21,6 +21,9 @@ function createWorld() {
   const log = []
   const agents = new Map()
   const timeline = []
+  const receipts = []
+  const renewing = new Set()
+  let renewalFailed = false
   let nextKey = 1
 
   function boot(agentId) {
@@ -87,12 +90,21 @@ function createWorld() {
         return { held: true, entityKey: `claim-${id}-${tag}` }
       },
       async renewClaim(id, _key, shouldContinue) {
-        while (shouldContinue()) {
-          await sleep(LEASE_MS / 3)
-          if (!shouldContinue()) break
-          for (const held of chain.claims.values()) if (held.agentId === id) held.expiresAt = Date.now() + LEASE_MS
+        renewing.add(id)
+        try {
+          while (shouldContinue()) {
+            await sleep(LEASE_MS / 3)
+            if (!shouldContinue()) break
+            if (renewalFailsOnce && !renewalFailed) {
+              renewalFailed = true
+              throw new Error('rpc timeout')
+            }
+            for (const held of chain.claims.values()) if (held.agentId === id) held.expiresAt = Date.now() + LEASE_MS
+          }
+          return { lost: false }
+        } finally {
+          renewing.delete(id)
         }
-        return { lost: false }
       },
       async releaseClaim(id, key) {
         const tag = key.slice(`claim-${id}-`.length)
@@ -111,7 +123,8 @@ function createWorld() {
       async finish(id, tag) {
         chain.done.set(tag, id)
         chain.claims.delete(tag)
-        log.push(['finish', id, tag])
+        log.push(['finish', id, tag, renewing.has(id)])
+        onFinish()
       },
       async isDone(tag) {
         return chain.done.has(tag)
@@ -123,7 +136,8 @@ function createWorld() {
         chain.verdicts.set(tag, { by: id, outcome })
         return { outcome, entityKey: `verdict-${tag}` }
       },
-      async publishReceipt() {
+      async publishReceipt(receipt) {
+        receipts.push(receipt)
         return 'cd'.repeat(32)
       },
       async infraStatus() {
@@ -143,7 +157,7 @@ function createWorld() {
   }
 
   return {
-    runId, infra, chain, steps, log, timeline, agents, boot, kill,
+    runId, infra, chain, steps, log, timeline, receipts, agents, boot, kill,
     stopAll: () => { for (const a of agents.values()) a.stop() },
   }
 }
@@ -174,6 +188,7 @@ console.log('scenario: nobody is scripted; the rack incident is filed, raced, fi
   check('exactly one agent finished it', w.log.filter((l) => l[0] === 'finish' && l[2] === tag).length === 1)
   check('the verdict came from someone other than the finisher', w.chain.verdicts.get(tag).by !== w.chain.done.get(tag))
   check('the verifier\'s own probe passed', w.chain.verdicts.get(tag).outcome === 'fixed')
+  check('the claim was still being renewed while the done row was written', w.log.find((l) => l[0] === 'finish' && l[2] === tag)?.[3] === true)
   w.stopAll()
 }
 
@@ -196,6 +211,8 @@ console.log('\nscenario: the rack incident holder loses power mid-work\n')
   check('the rack incident was finished exactly once', w.log.filter((l) => l[0] === 'finish' && l[2] === tag).length === 1)
   await waitFor(() => w.chain.verdicts.has(outageTag), 'a verdict on the outage')
   check('the outage verdict is fixed and not by its finisher', w.chain.verdicts.get(outageTag).outcome === 'fixed' && w.chain.verdicts.get(outageTag).by !== w.chain.done.get(outageTag))
+  await waitFor(() => w.receipts.length >= 2, 'both receipts')
+  check('each receipt carries only its own incident\'s events', w.receipts.every((r) => r.timeline.length > 0 && r.timeline.every((e) => e.tag === r.tag)))
   w.stopAll()
 }
 
@@ -248,13 +265,26 @@ console.log('\nscenario: two peers lose power at once\n')
   w.stopAll()
 }
 
-console.log('\nscenario: the verifier\'s probe disagrees with the finisher\n')
+console.log('\nscenario: a lease renewal fails outright\n')
 {
-  const w = createWorld()
+  const w = createWorld({ renewalFailsOnce: true })
   AGENTS.forEach(w.boot)
   const tag = rackTag(w.runId)
+  await waitFor(() => w.timeline.some((e) => e.text.startsWith(`could not finish ${tag}`)), 'the holder to stop on the failed renewal')
+  const stopped = w.timeline.find((e) => e.text.startsWith(`could not finish ${tag}`))
+  check('the holder stopped working instead of carrying on unrenewed', stopped.text.includes('could not be renewed'))
+  check('...and released its claim', w.log.some((l) => l[0] === 'release' && l[1] === stopped.agentId && l[2] === tag))
   await waitFor(() => w.chain.done.has(tag), 'the rack incident to be finished')
-  w.infra.reset()
+  check('the rack incident was finished exactly once', w.log.filter((l) => l[0] === 'finish' && l[2] === tag).length === 1)
+  w.stopAll()
+}
+
+console.log('\nscenario: the verifier\'s probe disagrees with the finisher\n')
+{
+  // Reset in the same tick the done row lands, so no verifier can probe the fixed rack first.
+  const w = createWorld({ onFinish: () => w.infra.reset() })
+  AGENTS.forEach(w.boot)
+  const tag = rackTag(w.runId)
   await waitFor(() => w.chain.verdicts.has(tag), 'a verdict')
   check('a rack that is down again is recorded as reopened', w.chain.verdicts.get(tag).outcome === 'reopened')
   w.stopAll()

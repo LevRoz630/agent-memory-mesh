@@ -196,12 +196,13 @@
 </fieldset>
 
 <script>
-const SWARM_GATEWAY = 'https://api.gateway.ethswarm.org'
+// Replaced by the server's SWARM_GATEWAY as soon as the websocket connects.
+let swarmGateway = 'https://api.gateway.ethswarm.org'
 const SWARM_SPAN_BYTES = 8
 const SWARM_PREVIEW_BYTES = 192
 
-const swarmChunkUrl = (ref) => `${SWARM_GATEWAY}/chunks/${encodeURIComponent(ref)}`
-const swarmFileUrl = (ref) => `${SWARM_GATEWAY}/bzz/${encodeURIComponent(ref)}/`
+const swarmChunkUrl = (ref) => `${swarmGateway}/chunks/${encodeURIComponent(ref)}`
+const swarmFileUrl = (ref) => `${swarmGateway}/bzz/${encodeURIComponent(ref)}/`
 
 // The gateway serves chunks as binary/octet-stream, so following the link downloads a file.
 // It allows cross-origin reads, so the page fetches the bytes itself and shows them instead.
@@ -211,7 +212,7 @@ async function fetchSwarmChunk(ref) {
   if (!res.ok) throw new Error(`Swarm gateway returned ${res.status}`)
   const payload = new Uint8Array(await res.arrayBuffer()).subarray(SWARM_SPAN_BYTES)
   const hex = Array.from(payload.subarray(0, SWARM_PREVIEW_BYTES), (b) => b.toString(16).padStart(2, '0')).join('')
-  return { bytes: payload.length, hex, truncated: payload.length > SWARM_PREVIEW_BYTES, host: new URL(SWARM_GATEWAY).host }
+  return { bytes: payload.length, hex, truncated: payload.length > SWARM_PREVIEW_BYTES, host: new URL(swarmGateway).host }
 }
 
 const $ = (id) => document.getElementById(id)
@@ -256,7 +257,7 @@ function render() {
 
   $('dcs').innerHTML = AGENTS.map((id) => {
     const a = state.agents[id]
-    const rackFailed = id === 'atlas' && state.phase === 'running' && state.report
+    const rackFailed = id === 'atlas' && state.phase !== 'resolved' && state.report
     const slots = Array.from({ length: 8 }, (_, i) => `<span class="${rackFailed && i === FAILED_SLOT ? 'failed' : ''}"></span>`).join('')
     const canKill = a.alive && state.phase !== 'idle'
     return `<div class="dc${a.alive ? '' : ' down'}">
@@ -319,9 +320,9 @@ function clearStoredPassword() {
   try { sessionStorage.removeItem('demoPassword') } catch {}
 }
 
-async function post(path) {
+async function authed(path, method = 'GET') {
   const attempt = async () => {
-    const res = await fetch(path, { method: 'POST', headers: { 'x-demo-password': getStoredPassword() } })
+    const res = await fetch(path, { method, headers: { 'x-demo-password': getStoredPassword() } })
     const data = await res.json()
     return { res, data }
   }
@@ -337,7 +338,11 @@ async function post(path) {
     if (res.status === 401) clearStoredPassword()
     throw new Error(data.error || res.statusText)
   }
-  state = data.state
+  return data
+}
+
+async function post(path) {
+  state = (await authed(path, 'POST')).state
   render()
 }
 
@@ -366,9 +371,7 @@ $('dcs').onclick = async (ev) => {
 async function openReport(as) {
   $('reportOut').textContent = 'downloading from Swarm…'
   try {
-    const res = await fetch(`/api/demo/report?as=${encodeURIComponent(as)}`)
-    const data = await res.json()
-    if (!res.ok) throw new Error(data.error || res.statusText)
+    const data = await authed(`/api/demo/report?as=${encodeURIComponent(as)}`)
     if (data.ok) {
       $('reportOut').innerHTML = `<p>Decrypted with <b>${esc(data.as)}</b>'s key (${esc(data.bytes)} bytes from Swarm):</p><pre>${esc(JSON.stringify(data.report, null, 2))}</pre>`
     } else {
@@ -405,7 +408,10 @@ function connect() {
   const ws = new WebSocket(`${proto}://${location.host}/live`)
   ws.onmessage = (ev) => {
     const msg = JSON.parse(ev.data)
-    if (msg.type === 'chain') {
+    if (msg.type === 'connected') {
+      swarmGateway = msg.swarmGateway
+      render()
+    } else if (msg.type === 'chain') {
       chain = msg
       renderChain()
     } else if (msg.type === 'demo') {
