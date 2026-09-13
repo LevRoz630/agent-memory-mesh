@@ -22,10 +22,6 @@ async function waitForBlock(pub, targetBlock) {
   }
 }
 
-async function currentBlock(pub) {
-  return pub.getBlockNumber()
-}
-
 // Cheapest-to-honor first: a closed incident should never be reopened by a worker, and finished
 // work should never be redone.
 async function incidentIsSpokenFor(ctx, tag) {
@@ -58,7 +54,7 @@ async function yieldsToLivePriorWorker(ctx, agentId, tag) {
 
 // One `lane` row per agent per tag, written the first time that agent holds the claim, so a
 // successor can find this agent's lane even if it dies before publishing anything to it.
-export async function ensureLaneRow(ctx, agentId, tag) {
+async function ensureLaneRow(ctx, agentId, tag) {
   const signer = ctx.signers.get(agentId)
   if (!signer) throw new Error(`no signer configured for agentId "${agentId}"`)
   const lanes = await queryByTagAndType(ctx.pub, { tag, memoryType: 'lane' })
@@ -99,22 +95,14 @@ export async function tryClaim(ctx, agentId, tag, attempt = 0) {
     // finalizes {held: true} if we're still the lowest key one full block after we first
     // believed we won.
     const receipt = await pub.waitForTransactionReceipt({ hash: written.txHash })
-    const txBlock = receipt.blockNumber
-
-    await waitForBlock(pub, txBlock + 1n)
-    let rivals = await queryByTagAndType(pub, { tag, memoryType: 'claim' })
-    if (currentWinnerKey(rivals) !== written.entityKey) {
-      await deleteMemory(signer.wallet, { entityKey: written.entityKey })
-      await sleep(200 + Math.floor(Math.random() * 300))
-      return tryClaim(ctx, agentId, tag, attempt + 1)
-    }
-
-    await waitForBlock(pub, txBlock + 2n)
-    rivals = await queryByTagAndType(pub, { tag, memoryType: 'claim' })
-    if (currentWinnerKey(rivals) !== written.entityKey) {
-      await deleteMemory(signer.wallet, { entityKey: written.entityKey })
-      await sleep(200 + Math.floor(Math.random() * 300))
-      return tryClaim(ctx, agentId, tag, attempt + 1)
+    for (const settleBlocks of [1n, 2n]) {
+      await waitForBlock(pub, receipt.blockNumber + settleBlocks)
+      const rivals = await queryByTagAndType(pub, { tag, memoryType: 'claim' })
+      if (currentWinnerKey(rivals) !== written.entityKey) {
+        await deleteMemory(signer.wallet, { entityKey: written.entityKey })
+        await sleep(200 + Math.floor(Math.random() * 300))
+        return tryClaim(ctx, agentId, tag, attempt + 1)
+      }
     }
 
     await ensureLaneRow(ctx, agentId, tag)
@@ -152,7 +140,7 @@ export async function renewClaim(ctx, agentId, entityKey, leaseBlocks = CLAIM_LE
   if (!signer) throw new Error(`no signer configured for agentId "${agentId}"`)
   const renewEveryBlocks = Math.max(1, Math.floor(leaseBlocks / 3))
   while (shouldContinue()) {
-    const start = await currentBlock(pub)
+    const start = await pub.getBlockNumber()
     await waitForBlock(pub, start + BigInt(renewEveryBlocks))
     if (!shouldContinue()) break
     try {
@@ -198,7 +186,7 @@ export async function startHeartbeat(ctx, agentId, shouldContinue = () => true) 
       // so this row is gone. Give up and let the caller start a fresh beat.
       if (kind === 'lapsed') return
     }
-    anchor = await currentBlock(pub)
+    anchor = await pub.getBlockNumber()
   }
 }
 
@@ -342,7 +330,7 @@ export async function verify(ctx, verifierAgentId, tag) {
   await writeMemory(verifierSigner.wallet, {
     agentId: verifierAgentId, memoryType: 'verdict', tag, importance: 5,
     content: { reasoning: `checked ${doneRow.owner}'s lane, found a ${finisherLane?.latestContent?.kind ?? 'missing'} entry` },
-    ttlBlocks: LONG_LIVED_BLOCKS, roster: AGENT_IDS, outcome,
+    ttlBlocks: LONG_LIVED_BLOCKS, outcome,
   })
   return { outcome }
 }

@@ -1,10 +1,10 @@
-export const DATA_CENTERS = { atlas: 'DC-1 Frankfurt', nova: 'DC-2 Amsterdam', sol: 'DC-3 Milan' }
+import { AGENT_IDS } from './arkiv.mjs'
 
-export const AGENT_IDS = Object.keys(DATA_CENTERS)
+const DATA_CENTERS = { atlas: 'DC-1 Frankfurt', nova: 'DC-2 Amsterdam', sol: 'DC-3 Milan' }
 
 export const WORK_STEPS = ['diagnose rack R12', 'power-cycle rack R12 via IPMI', 'confirm servers back online']
 
-export const INCIDENT_REPORT = {
+const INCIDENT_REPORT = {
   rack: 'R12',
   dataCenter: DATA_CENTERS.atlas,
   symptom: 'all 8 servers unreachable, top-of-rack switch silent',
@@ -148,7 +148,6 @@ export function createDemo({ ops, onUpdate = () => {}, timings = {} }) {
           // override it, or an outage's receipt is mislabeled with the rack incident's name.
           const ref = await ops.publishReceipt(structuredClone({ ...run, tag }))
           if (run === state) {
-            incident.receiptRef = ref
             if (tag === run.tag) run.receiptRef = ref
             event(run, agentId, 'published a public receipt on Swarm')
           }
@@ -198,8 +197,6 @@ export function createDemo({ ops, onUpdate = () => {}, timings = {} }) {
             ctl.verified.delete(tag)
             continue
           }
-          incidentFor(run, tag).verdict = result.outcome
-          if (tag === run.tag) run.verdict = result.outcome
           event(run, agentId, `verified ${tag}: ${result.outcome}`)
         } catch (e) {
           // A permanently broken verify (missing signer, chain down) must not push one timeline
@@ -245,11 +242,8 @@ export function createDemo({ ops, onUpdate = () => {}, timings = {} }) {
       if (!live()) return
       ctl.stopWatch[agentId] = ops.watchForPeerOutages(agentId, run.id, (peerId, outageTag, { filed = true } = {}) => {
         if (!live()) return
-        const incident = incidentFor(run, outageTag, peerId)
-        if (filed) {
-          incident.detectedBy = agentId
-          event(run, agentId, `noticed ${peerId} stopped beating — filed ${outageTag}`)
-        }
+        incidentFor(run, outageTag, peerId)
+        if (filed) event(run, agentId, `noticed ${peerId} stopped beating — filed ${outageTag}`)
         spawnWorker(run, ctl, agentId, outageTag)
       })
     })

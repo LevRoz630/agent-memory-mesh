@@ -331,7 +331,6 @@ opsE.watchers.get('nova')('atlas', 'outage-atlas-run-a', { filed: true, location
 opsE.watchers.get('sol')('atlas', 'outage-atlas-run-a', { filed: false })
 await waitFor(() => demoE.getState().agents.atlas.alive, "atlas's outage to bring it back", 5000)
 check("atlas's outage is its only incident", Object.keys(demoE.getState().incidents).join() === 'outage-atlas-run-a')
-check('the filer is recorded as the detector', demoE.getState().incidents['outage-atlas-run-a'].detectedBy === 'nova')
 check("the outage carries atlas's last known location", demoE.getState().incidents['outage-atlas-run-a'].location === 'DC-1 Frankfurt')
 check('the timeline says where the silent agent was', demoE.getState().timeline.some((e) => e.text.includes('last beat from DC-1 Frankfurt')))
 
