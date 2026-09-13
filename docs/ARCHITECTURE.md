@@ -137,11 +137,11 @@ heartbeat is what peers see.
 | Role      | `memory_type` | TTL | Written by |
 | --------- | -------------- | --- | ---------- |
 | incident  | `event`     | 600 blocks | reporting agent, or the peer that noticed an outage |
-| claim     | `claim`     | 12 blocks, renewed every 4 while working | working agent |
+| claim     | `claim`     | 24 blocks, renewed every 4 while working | working agent |
 | lane      | `lane`      | 600 blocks | each agent, once per incident, the first time it wins the claim |
 | done      | `done`      | 600 blocks | finishing agent |
 | verdict   | `verdict`   | 600 blocks | a verifying agent other than the finisher, after checking the fix |
-| heartbeat | `heartbeat` | 8 blocks, renewed every 2 | each agent, about itself, tag `agent-<id>` |
+| heartbeat | `heartbeat` | 16 blocks, renewed every 2 | each agent, about itself, tag `agent-<id>` |
 
 Claims and heartbeats expire on their own; everything else persists. The first five roles share
 one `tag` per incident and differ only by `memory_type`; a heartbeat's tag identifies the agent,
@@ -191,8 +191,9 @@ dead agent only comes back by its outage being finished, so dying again after th
 
 Every live peer that sees an outage works it — whether it filed the row or found it already there —
 so the incident survives its filer dying too. The power-on step of an agent's outage restarts that
-agent's process, and the restarted agent rejoins every incident still open that isn't its own outage. A worker that crashes on a Swarm or RPC error
-stops renewing its claim and restarts after a short backoff, and a watcher survives a failed poll.
+agent's process, and the restarted agent rejoins every incident still open that isn't its own outage. A worker whose step fails (a rack
+whose data center is dark, a Swarm or RPC error) deletes its claim instead of leaving it to expire,
+waits 15 s and tries again, and a watcher survives a failed poll.
 
 ### Lifecycle
 
@@ -201,7 +202,7 @@ A double hand-off — two agents can die in sequence, and the third has to notic
 ```
   atlas                                nova                                  sol
   ├─ rack R12 fails → event/42          │                                     │
-  ├─ claim/42 (12-block lease), lane/42 │                                     │
+  ├─ claim/42 (24-block lease), lane/42 │                                     │
   ├─ swarm: diagnosis → lane index 0    │                                     │
   ├─ renew claim + heartbeat            │                                     │
   ✗  dies — claim lapses, heartbeat lapses
@@ -251,7 +252,7 @@ re-query; if more than one claim exists, the lowest `entityKey` wins and every o
 deletes its own claim and retries with a random backoff. A second confirmation round (one more
 block, re-query again) runs before finalizing, to catch a rival whose write landed a block later.
 Any failure after writing a claim deletes it before returning. The settle rounds and the `lane` row
-use about half the 12-block lease, so a won claim is extended to a full lease before `tryClaim`
+use several blocks of the 24-block lease, so a won claim is extended to a full lease before `tryClaim`
 returns; a claim that already lapsed by then is reported as not held.
 
 ### Verification

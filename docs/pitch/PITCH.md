@@ -23,7 +23,7 @@ renew its own heartbeat, watch its two peers' heartbeats for a lapse, and claim/
 incidents. Which one detects an outage, which one fixes it, and which one verifies is decided by
 who's alive and who acts first, not by identity.
 
-1. Atlas detects an incident and files it, then claims it — an 8-to-12-block lease, the
+1. Atlas detects an incident and files it, then claims it — a 24-block lease, the
    shortest-lived thing in the system on purpose.
 2. Atlas starts working and publishes its diagnosis to its own lane on Swarm: a per-agent,
    append-only feed that survives Atlas regardless of what happens to Atlas next.

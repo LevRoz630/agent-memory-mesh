@@ -24,11 +24,11 @@ validator accepts (see `arkiv-feedback/friction.md` finding 2).
 | Role      | `memory_type` | TTL                              | Written by                        |
 | --------- | --------------- | --------------------------------- | ---------------------------------- |
 | incident  | `event`       | 600 blocks                      | whichever agent reports it — either the one that noticed an external signal, or a peer filing an outage it detected |
-| claim     | `claim`       | 12 blocks, renewed every 4 while working | the working agent          |
+| claim     | `claim`       | 24 blocks, renewed every 4 while working | the working agent          |
 | lane      | `lane`        | 600 blocks                      | each agent, once per incident, the first time it wins the claim |
 | done      | `done`        | 600 blocks                      | the finishing agent                |
 | verdict   | `verdict`     | 600 blocks                      | whichever agent's verify loop notices the `done` row first — never the finisher (`verify()` checks the `done` row's owner) |
-| heartbeat | `heartbeat`   | 8 blocks, renewed every 2 | each agent, about itself, on `tag: agent-<id>` |
+| heartbeat | `heartbeat`   | 16 blocks, renewed every 2 | each agent, about itself, on `tag: agent-<id>` |
 
 Claims and heartbeats are the only types designed to expire and stay gone — everything else
 persists so an incident's full history survives even after every claim on it has lapsed.

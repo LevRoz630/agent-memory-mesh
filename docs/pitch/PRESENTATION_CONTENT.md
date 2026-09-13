@@ -43,7 +43,7 @@ and sharing one `tag` per incident:
 | Role     | `memory_type` | TTL                              | Written by                             |
 | -------- | --------------- | -------------------------------- | -------------------------------------- |
 | incident | `event`       | 600 blocks                       | reporting agent                        |
-| claim    | `claim`       | 12 blocks, renewed while working | working agent                          |
+| claim    | `claim`       | 24 blocks, renewed while working | working agent                          |
 | lane     | `lane`        | 600 blocks                       | each agent, once, on first Swarm write |
 | done     | `done`        | 600 blocks                       | finishing agent                        |
 | verdict  | `verdict`     | 600 blocks                       | reporting agent, after checking        |
@@ -68,7 +68,7 @@ before finalizing, to catch a rival whose write landed a block later.
 ```
 incident/42 filed
         │
-        ├─ atlas claims (12-block lease)
+        ├─ atlas claims (24-block lease)
         ├─ atlas publishes diagnosis → atlas's lane, index 0
         ├─ atlas renews claim + heartbeat
         ✗  atlas dies — claim lapses, heartbeat lapses
@@ -178,8 +178,9 @@ next step, and the crypto doesn't change to get there, only who holds which key.
 ## 8. Key numbers and facts
 
 - **Chain**: Tiramisu testnet, ~2-second blocks.
-- **Claim lease**: 12 blocks (~24s), renewed every ~4 blocks (~8s) while working.
-- **Heartbeat lease**: 8 blocks (~16s), renewed every ~1/3 of that.
+- **Claim lease**: 24 blocks (~48s), renewed every 4 blocks (~8s) while working.
+- **Heartbeat lease**: 16 blocks (~32s), renewed every 2 blocks (~4s). Both leases outlive a renewal
+  Tiramisu holds back for 11+ blocks, which we saw under hackathon load.
 - **Long-lived rows** (event/lane/done/verdict): 600 blocks (~20 minutes).
 - **Content cap**: 4096 bytes per memory (one postage stamp = one chunk).
 - **Postage batch**: depth 23, multi-day TTL, spent locally — never routed through a Bee node.
