@@ -1,8 +1,8 @@
 // Renders the public incident receipt SVG from a realistic resolved state. No network, no env vars.
 //
-//   node scripts/test-receipt.mjs
+//   node tests/unit/receipt.mjs
 
-import { renderReceipt } from '../src/receipt.mjs'
+import { renderReceipt } from '../../src/receipt.mjs'
 
 const DANGEROUS_TEXT = 'nova probed the payload for injection: <script>alert(1)</script> and a "quote"'
 const LONG_TEXT = 'x'.repeat(300)

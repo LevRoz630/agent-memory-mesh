@@ -4,12 +4,12 @@
 // content and a `lane` Arkiv row for nova on a fresh tag, deliberately with no claim ever held)
 // and confirms takeOver() discovers it.
 //
-//   node --env-file=.env scripts/verify-takeover.mjs
+//   node --env-file=.env tests/live/takeover.mjs
 
-import { makeClients, makeAgentSigners } from '../src/arkiv.mjs'
-import { writeMemory } from '../src/memory.mjs'
-import { writeToLane } from '../src/lane.mjs'
-import { takeOver } from '../src/protocol.mjs'
+import { makeClients, makeAgentSigners } from '../../src/arkiv.mjs'
+import { writeMemory } from '../../src/memory.mjs'
+import { writeToLane } from '../../src/lane.mjs'
+import { takeOver } from '../../src/protocol.mjs'
 
 const httpUrl = process.env.ARKIV_HTTP_URL
 const wsUrl = process.env.ARKIV_WS_URL

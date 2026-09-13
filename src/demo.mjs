@@ -12,9 +12,9 @@ export const INCIDENT_REPORT = {
   affectedCustomers: ['acme-shop', 'nordic-cdn', 'lumen-games'],
 }
 
-// Sol starts late so Nova reliably holds the first claim on camera, and Atlas later still, so the
-// seeded incident plays out as before. The delay applies to the seeded incident only: an outage an
-// agent detects itself is worked immediately, by whichever agent noticed.
+// Atlas noticed the rack, so it takes the first claim; nova and then sol hold back so that holds on
+// camera. The delay applies to the rack incident only: an outage is worked immediately by every
+// live peer.
 const DEFAULT_TIMINGS = {
   stepMs: 6000,
   retryMs: 3000,
@@ -22,10 +22,11 @@ const DEFAULT_TIMINGS = {
   // A just-written heartbeat stays invisible to queries for a block or two, so watchers that start
   // at the same instant as the beats would read startup lag as everybody being down.
   watchStartDelayMs: 20000,
-  startDelayMs: { atlas: 30000, nova: 0, sol: 20000 },
+  // Atlas files the rack incident this long after start, which is the window to cut DC-1 first.
+  reportDelayMs: 8000,
+  startDelayMs: { atlas: 0, nova: 10000, sol: 20000 },
 }
 
-const OUTAGE_PREFIX = 'outage-'
 const MAX_VERIFY_ATTEMPTS = 5 // a few polls' worth of transient failure, not an unbounded retry
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
@@ -36,7 +37,7 @@ function freshAgents() {
 
 export function createDemo({ ops, onUpdate = () => {}, timings = {} }) {
   const t = { ...DEFAULT_TIMINGS, ...timings, startDelayMs: { ...DEFAULT_TIMINGS.startDelayMs, ...timings.startDelayMs } }
-  let state = { tag: null, phase: 'idle', report: null, stepsDone: 0, agents: freshAgents(), timeline: [], receiptRef: null, incidents: {} }
+  let state = { id: null, tag: null, phase: 'idle', report: null, stepsDone: 0, agents: freshAgents(), timeline: [], receiptRef: null, incidents: {} }
   // Loop handles and cross-agent bookkeeping live outside `state` because getState() clones it.
   let control = null
 
@@ -60,14 +61,11 @@ export function createDemo({ ops, onUpdate = () => {}, timings = {} }) {
   }
 
   // `subject` is the agent whose data center the incident is about, and only an outage incident has
-  // one: it is that peer's silence, so resolving it is what brings the peer back. The seeded
-  // incident is about a rack, not an agent — resolving it revives nobody, or a peer killed while it
-  // was still open would come back without any peer ever having noticed it was gone.
-  function incidentFor(run, tag) {
-    if (!run.incidents[tag]) {
-      const subject = tag.startsWith(OUTAGE_PREFIX) ? tag.slice(OUTAGE_PREFIX.length) : null
-      run.incidents[tag] = { tag, subject, phase: 'running', stepsDone: 0 }
-    }
+  // one: it is that peer's silence, so resolving it is what brings the peer back. The rack incident
+  // is about a rack, not an agent — resolving it revives nobody, or a peer killed while it was still
+  // open would come back without any peer ever having noticed it was gone.
+  function incidentFor(run, tag, subject = null) {
+    if (!run.incidents[tag]) run.incidents[tag] = { tag, subject, phase: 'running', stepsDone: 0 }
     return run.incidents[tag]
   }
 
@@ -102,21 +100,28 @@ export function createDemo({ ops, onUpdate = () => {}, timings = {} }) {
       const renewal = ops.renewClaim(agentId, claim.entityKey, () => working && live())
         .then((result) => { if (result?.lost) leaseLost = true })
         .catch((e) => event(run, agentId, `lease renewal failed: ${e.message}`))
-      let step = await ops.readProgress(tag)
-      if (step > 0) event(run, agentId, `found ${step}/${WORK_STEPS.length} steps already done on Swarm, resuming`)
-      let laneIndex = 0
-      while (step < WORK_STEPS.length && !leaseLost) {
-        await sleep(t.stepMs)
-        if (!live()) return
-        if (leaseLost) break
-        await ops.recordStep(agentId, tag, step, laneIndex)
-        laneIndex += 1
-        step += 1
-        incident.stepsDone = step
-        if (tag === run.tag) run.stepsDone = step
-        event(run, agentId, `step ${step}/${WORK_STEPS.length}: ${WORK_STEPS[step - 1]}`)
+      // A step that throws must also stop the renewal, or the claim never lapses for a restarted
+      // worker or anyone else to take.
+      try {
+        let step = await ops.readProgress(tag)
+        if (step > 0) event(run, agentId, `found ${step}/${WORK_STEPS.length} steps already done on Swarm, resuming`)
+        // Continues this agent's own lane rather than restarting it at 0, which would overwrite what
+        // it published before a lapsed lease.
+        let laneIndex = await ops.nextLaneIndex(agentId, tag)
+        while (step < WORK_STEPS.length && !leaseLost) {
+          await sleep(t.stepMs)
+          if (!live()) return
+          if (leaseLost) break
+          await ops.recordStep(agentId, tag, step, laneIndex)
+          laneIndex += 1
+          step += 1
+          incident.stepsDone = step
+          if (tag === run.tag) run.stepsDone = step
+          event(run, agentId, `step ${step}/${WORK_STEPS.length}: ${WORK_STEPS[step - 1]}`)
+        }
+      } finally {
+        working = false
       }
-      working = false
       await renewal
       if (!live()) return
       // Whatever was finished is already published to this agent's lane, so the next holder resumes
@@ -127,15 +132,10 @@ export function createDemo({ ops, onUpdate = () => {}, timings = {} }) {
         await sleep(t.retryMs)
         continue
       }
-      // Claimed before the write, not after: finish() publishes the `done` row partway through, and
-      // a verify loop that polls in that window would otherwise let the worker grade itself.
-      ctl.finishedBy[tag] = agentId
-      try {
-        await ops.finish(agentId, tag, claim.entityKey)
-      } catch (e) {
-        delete ctl.finishedBy[tag]
-        throw e
-      }
+      // Marked before the write, not after: finish() publishes the `done` row partway through, and a
+      // verify loop polling in that window would otherwise ask protocol verify() to grade its own fix.
+      ctl.ownFixes.add(`${agentId}:${tag}`)
+      await ops.finish(agentId, tag, claim.entityKey)
       incident.phase = 'resolved'
       if (tag === run.tag) run.phase = 'resolved'
       setStatus(run, agentId, 'done')
@@ -144,8 +144,8 @@ export function createDemo({ ops, onUpdate = () => {}, timings = {} }) {
       if (subject && run.agents[subject] && !run.agents[subject].alive) revive(run, ctl, subject)
       if (run === state) {
         try {
-          // run.tag is always the seeded incident's tag, never whichever incident just finished --
-          // override it, or an outage's receipt is mislabeled with the seeded incident's name.
+          // run.tag is always the rack incident's tag, never whichever incident just finished --
+          // override it, or an outage's receipt is mislabeled with the rack incident's name.
           const ref = await ops.publishReceipt(structuredClone({ ...run, tag }))
           if (run === state) {
             incident.receiptRef = ref
@@ -160,35 +160,47 @@ export function createDemo({ ops, onUpdate = () => {}, timings = {} }) {
     }
   }
 
+  // A worker that crashed on a Swarm or RPC error comes back after retryMs. It has to: a live agent
+  // that has worked an incident keeps the right to resume it (protocol tryClaim), so while it is
+  // alive nobody else will take over.
   function spawnWorker(run, ctl, agentId, tag) {
     const key = `${agentId}:${tag}`
     if (ctl.working.has(key)) return
     ctl.working.add(key)
     worker(run, ctl, agentId, tag)
-      .catch((e) => {
+      .then(() => ctl.working.delete(key), (e) => {
+        ctl.working.delete(key)
         run.agents[agentId].status = 'error'
         event(run, agentId, `error: ${e.message}`)
+        return sleep(t.retryMs).then(() => {
+          if (isLive(run, agentId) && run.incidents[tag]?.phase !== 'resolved') spawnWorker(run, ctl, agentId, tag)
+        })
       })
-      .finally(() => ctl.working.delete(key))
   }
 
   // Whichever live agent polls first and sees a `done` row writes the verdict — never the agent
-  // that did the work, so a verdict is always a second pair of eyes.
+  // that did the work. protocol verify() refuses that on-chain; ownFixes only saves the round trip.
   async function verifyLoop(run, ctl, agentId) {
     const live = () => isLive(run, agentId)
     while (live()) {
       await sleep(t.verifyPollMs)
       for (const tag of Object.keys(run.incidents)) {
+        const own = `${agentId}:${tag}`
         if (!live()) return
-        if (ctl.verified.has(tag) || ctl.finishedBy[tag] === agentId) continue
+        if (ctl.verified.has(tag) || ctl.ownFixes.has(own)) continue
         if (!(await ops.isDone(tag))) continue
-        if (!live() || ctl.verified.has(tag) || ctl.finishedBy[tag] === agentId) continue
+        if (!live() || ctl.verified.has(tag) || ctl.ownFixes.has(own)) continue
         ctl.verified.add(tag)
         try {
-          const { outcome } = await ops.verify(agentId, tag)
-          incidentFor(run, tag).verdict = outcome
-          if (tag === run.tag) run.verdict = outcome
-          event(run, agentId, `verified ${tag}: ${outcome}`)
+          const result = await ops.verify(agentId, tag)
+          if (result.refused) {
+            ctl.ownFixes.add(own)
+            ctl.verified.delete(tag)
+            continue
+          }
+          incidentFor(run, tag).verdict = result.outcome
+          if (tag === run.tag) run.verdict = result.outcome
+          event(run, agentId, `verified ${tag}: ${result.outcome}`)
         } catch (e) {
           // A permanently broken verify (missing signer, chain down) must not push one timeline
           // entry every poll forever: `state.timeline` is cloned on every getState() and this
@@ -213,38 +225,48 @@ export function createDemo({ ops, onUpdate = () => {}, timings = {} }) {
   async function heartbeatLoop(run, agentId) {
     const live = () => isLive(run, agentId)
     while (live()) {
+      // A beat that lapsed is written again at once: waiting would leave a gap long enough for two
+      // peer polls to read a live agent as down. Only a failed write waits before retrying.
       try {
         await ops.startHeartbeat(agentId, live)
       } catch (e) {
         event(run, agentId, `heartbeat interrupted: ${e.message}`)
+        if (live()) await sleep(t.retryMs)
       }
-      if (!live()) return
-      await sleep(t.retryMs)
     }
   }
 
+  // Every live peer that sees an outage works it, whether it filed the row or found it already
+  // there, so the incident survives its filer dying too.
   function startAgentLoops(run, ctl, agentId) {
     const live = () => isLive(run, agentId)
     heartbeatLoop(run, agentId).catch((e) => event(run, agentId, `heartbeat loop stopped: ${e.message}`))
     sleep(t.watchStartDelayMs).then(() => {
       if (!live()) return
-      ctl.stopWatch[agentId] = ops.watchForPeerOutages(agentId, (peerId, outageTag) => {
+      ctl.stopWatch[agentId] = ops.watchForPeerOutages(agentId, run.id, (peerId, outageTag, { filed = true } = {}) => {
         if (!live()) return
-        event(run, agentId, `noticed ${peerId} stopped beating — filed ${outageTag}`)
-        incidentFor(run, outageTag).detectedBy = agentId
-        emit(run)
+        const incident = incidentFor(run, outageTag, peerId)
+        if (filed) {
+          incident.detectedBy = agentId
+          event(run, agentId, `noticed ${peerId} stopped beating — filed ${outageTag}`)
+        }
         spawnWorker(run, ctl, agentId, outageTag)
       })
     })
     verifyLoop(run, ctl, agentId).catch((e) => event(run, agentId, `verify loop stopped: ${e.message}`))
   }
 
+  // A revived agent is a full peer again: it rejoins every incident still open, or one it had worked
+  // before would wait on it (protocol tryClaim yields to a live previous worker) while it sat idle.
   function revive(run, ctl, agentId) {
     const agent = run.agents[agentId]
     agent.alive = true
     agent.status = 'watching'
     event(run, agentId, `${agent.dc} back online, ${agentId} is watching again`)
     startAgentLoops(run, ctl, agentId)
+    for (const incident of Object.values(run.incidents)) {
+      if (incident.phase !== 'resolved' && incident.subject !== agentId) spawnWorker(run, ctl, agentId, incident.tag)
+    }
   }
 
   function stopAllWatches() {
@@ -252,12 +274,11 @@ export function createDemo({ ops, onUpdate = () => {}, timings = {} }) {
     for (const stop of Object.values(control.stopWatch)) stop?.()
   }
 
-  async function start() {
-    stopAllWatches()
-    const run = { tag: `incident-${Date.now()}`, phase: 'running', report: null, stepsDone: 0, agents: freshAgents(), timeline: [], receiptRef: null, incidents: {} }
-    state = run
-    const ctl = { stopWatch: {}, working: new Set(), verified: new Set(), verifyFailures: new Map(), finishedBy: {} }
-    control = ctl
+  // A DC that is already dark when the rack fails can't report it: the run then has no rack
+  // incident, only atlas's outage, which its peers detect from the silence like any other.
+  async function fileRackIncident(run, ctl) {
+    await sleep(t.reportDelayMs)
+    if (!isLive(run, 'atlas')) return
     setStatus(run, 'atlas', 'watching')
     event(run, 'atlas', `rack R12 in ${DATA_CENTERS.atlas} stopped responding`)
     try {
@@ -265,14 +286,25 @@ export function createDemo({ ops, onUpdate = () => {}, timings = {} }) {
     } catch (e) {
       run.phase = 'failed'
       event(run, 'atlas', `failed to file the incident: ${e.message}`)
-      throw e
+      return
     }
+    if (run !== state) return
     event(run, 'atlas', 'filed the incident: index on Arkiv, encrypted report on Swarm')
     incidentFor(run, run.tag)
     for (const id of AGENT_IDS) {
-      startAgentLoops(run, ctl, id)
-      spawnWorker(run, ctl, id, run.tag)
+      if (isLive(run, id)) spawnWorker(run, ctl, id, run.tag)
     }
+  }
+
+  async function start() {
+    stopAllWatches()
+    const id = Date.now()
+    const run = { id, tag: `incident-${id}`, phase: 'running', report: null, stepsDone: 0, agents: freshAgents(), timeline: [], receiptRef: null, incidents: {} }
+    state = run
+    const ctl = { stopWatch: {}, working: new Set(), verified: new Set(), verifyFailures: new Map(), ownFixes: new Set() }
+    control = ctl
+    for (const agentId of AGENT_IDS) startAgentLoops(run, ctl, agentId)
+    fileRackIncident(run, ctl).catch((e) => event(run, 'atlas', `error: ${e.message}`))
     return getState()
   }
 

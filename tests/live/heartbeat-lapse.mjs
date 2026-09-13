@@ -1,9 +1,9 @@
 // Live check: a heartbeat renews while its loop runs, and lapses cleanly once stopped.
 //
-//   node --env-file=.env scripts/verify-heartbeat-lapse.mjs
+//   node --env-file=.env tests/live/heartbeat-lapse.mjs
 
-import { makeClients, makeAgentSigners, queryByTagAndType } from '../src/arkiv.mjs'
-import { startHeartbeat, HEARTBEAT_LEASE_BLOCKS } from '../src/protocol.mjs'
+import { makeClients, makeAgentSigners, queryByTagAndType } from '../../src/arkiv.mjs'
+import { startHeartbeat, HEARTBEAT_LEASE_BLOCKS } from '../../src/protocol.mjs'
 
 const httpUrl = process.env.ARKIV_HTTP_URL
 const { pub } = makeClients({ privateKey: process.env.ARKIV_PRIVATE_KEY, httpUrl })

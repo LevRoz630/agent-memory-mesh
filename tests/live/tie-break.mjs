@@ -2,10 +2,10 @@
 // should end up holding the claim after the tie-break settles; the loser's claim entity should be
 // gone.
 //
-//   node --env-file=.env scripts/verify-tie-break.mjs
+//   node --env-file=.env tests/live/tie-break.mjs
 
-import { makeClients, makeAgentSigners, queryByTagAndType } from '../src/arkiv.mjs'
-import { tryClaim } from '../src/protocol.mjs'
+import { makeClients, makeAgentSigners, queryByTagAndType } from '../../src/arkiv.mjs'
+import { tryClaim } from '../../src/protocol.mjs'
 
 const httpUrl = process.env.ARKIV_HTTP_URL
 const wsUrl = process.env.ARKIV_WS_URL

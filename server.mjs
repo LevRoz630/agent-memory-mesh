@@ -1,5 +1,5 @@
-// Local dev entrypoint: the shared REST app plus the live websocket push that the serverless
-// deployment (api/index.mjs) can't hold open.
+// Entrypoint: the shared REST app, the live websocket push on /live, and the control room's demo
+// endpoints.
 
 import { createServer } from 'node:http'
 import { createECDH, timingSafeEqual } from 'node:crypto'

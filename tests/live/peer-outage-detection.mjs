@@ -1,10 +1,10 @@
 // Live check: nova's heartbeat lapses, sol's watch loop detects it and files exactly one
 // outage incident — not zero, not a duplicate.
 //
-//   node --env-file=.env scripts/verify-peer-outage-detection.mjs
+//   node --env-file=.env tests/live/peer-outage-detection.mjs
 
-import { makeClients, makeAgentSigners, queryByTagAndType, deleteMemory } from '../src/arkiv.mjs'
-import { startHeartbeat, watchForPeerOutages } from '../src/protocol.mjs'
+import { makeClients, makeAgentSigners, queryByTagPrefixAndType } from '../../src/arkiv.mjs'
+import { startHeartbeat, watchForPeerOutages, outageTagPrefix } from '../../src/protocol.mjs'
 
 const httpUrl = process.env.ARKIV_HTTP_URL
 const { pub } = makeClients({ privateKey: process.env.ARKIV_PRIVATE_KEY, httpUrl })
@@ -13,14 +13,8 @@ const ctx = { pub, signers }
 
 console.log('peer outage detection\n')
 
-// An outage incident lives for LONG_LIVED_BLOCKS (~20 min), and the watcher skips a peer that
-// already has one on-chain. Clear any leftover from an earlier run so this script is repeatable.
-const stale = await queryByTagAndType(pub, { tag: 'outage-nova', memoryType: 'event' })
-for (const row of stale) {
-  const owner = [...signers.values()].find((s) => s.account.address.toLowerCase() === row.owner.toLowerCase())
-  if (owner) await deleteMemory(owner.wallet, { entityKey: row.key })
-}
-if (stale.length > 0) console.log(`  cleared ${stale.length} stale outage-nova incident(s)`)
+// Outage tags are scoped, so rows an earlier run left on chain can't stand in for this one's.
+const scope = `verify-${Date.now()}`
 
 // Nova beats briefly, then stops — simulating a crash, not a graceful shutdown.
 let novaRunning = true
@@ -32,7 +26,7 @@ console.log('  nova heartbeat stopped (simulated crash)')
 
 const detected = []
 const startedAt = Date.now()
-const stopWatch = watchForPeerOutages(ctx, 'sol', (peerId, tag) => detected.push({ peerId, tag, at: Date.now() }))
+const stopWatch = watchForPeerOutages(ctx, 'sol', scope, (peerId, tag) => detected.push({ peerId, tag, at: Date.now() }))
 
 // Wait past nova's lease plus enough polling cycles for sol to notice. Detection needs two
 // consecutive empty polls for the same peer, so budget one extra poll interval on top of the
@@ -49,7 +43,7 @@ const delaySec = novaDetected.length > 0 ? Math.round((novaDetected[0].at - star
 const delayedPastLease = novaDetected.length > 0 && novaDetected[0].at - startedAt >= 8000
 console.log(`  detection waited for the lease to lapse: ${delayedPastLease} (${delaySec}s after watch start)`)
 
-const rows = await queryByTagAndType(pub, { tag: 'outage-nova', memoryType: 'event' })
+const rows = await queryByTagPrefixAndType(pub, { tagPrefix: outageTagPrefix('nova', scope), memoryType: 'event' })
 console.log(`  exactly one outage incident on-chain: ${rows.length === 1} (found ${rows.length})`)
 
 const reproduced = novaDetected.length === 1 && delayedPastLease && rows.length === 1

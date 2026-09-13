@@ -195,6 +195,6 @@ public.
 - **Arkiv SDK friction found and reproduced**: 4 issues (read/write attribute shape asymmetry,
   contradictory name validation, missing nonce manager for concurrent writes, identical error for
   a never-created vs. an expired entity) — each with a live, runnable reproducer.
-- **Bounty fit**: Arkiv (schema draft at `arkiv/schema.md`, friction report, expiry-as-mechanism,
+- **Bounty fit**: Arkiv (schema draft at `docs/ARKIV_SCHEMA.md`, friction report, expiry-as-mechanism,
   live-wire subscription over `watchEntityEvents`) and Swarm (genuine chunk-path uploads with a
   locally signed postage stamp, a real reason for decentralized storage, not just "because we can").

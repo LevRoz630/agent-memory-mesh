@@ -17,7 +17,7 @@ first silently prints `[object Object]` — no error, no warning. Discoverable o
 side; `createEntity`'s own JSDoc never mentions it. We unwrap centrally in `src/arkiv.mjs`
 (`unwrapAttributes`) so nothing downstream has to know.
 
-Reproduce: `scripts/feedback/01-attribute-wrapper-shape.mjs`
+Reproduce: `arkiv-feedback/repro/01-attribute-wrapper-shape.mjs`
 
 ## 2. Attribute-name validation is client-permissive, engine-strict, and self-contradictory
 
@@ -26,7 +26,7 @@ engine's own rejection message lists `"A"-"Z"` as a permitted character range wh
 `"A"` (0x41) in the same breath. snake_case names (`agent_id`, not `agentId`) are the only safe
 choice, and nothing catches the mismatch before an on-chain transaction is spent finding out.
 
-Reproduce: `scripts/feedback/02-name-vs-value-validation.mjs`
+Reproduce: `arkiv-feedback/repro/02-name-vs-value-validation.mjs`
 
 ## 3. Concurrent writes from one signer need an explicit nonce manager
 
@@ -36,7 +36,7 @@ so the actual cause is invisible from the error alone. This is the finding most 
 another team building any multi-write agent workflow, and it's why Hydra gives each of its three
 agents (atlas/nova/sol) its own signer with its own nonce sequence rather than sharing one wallet.
 
-Reproduce: `scripts/feedback/03-nonce-manager.mjs`
+Reproduce: `arkiv-feedback/repro/03-nonce-manager.mjs`
 
 ## 4. A never-created entity and an expired one return the identical error
 
@@ -47,4 +47,4 @@ which is exactly the ambiguity Hydra's claim-lease protocol has to design around
 as a separate, long-lived provenance record, since the claim entity itself gives no history once
 it's gone).
 
-Reproduce: `scripts/feedback/04-not-found-ambiguity.mjs`
+Reproduce: `arkiv-feedback/repro/04-not-found-ambiguity.mjs`

@@ -1,9 +1,9 @@
 // The demo controller against fake ops: kill the claim holder mid-work, the survivor must wait for
 // the lease to lapse, take over, and resume from the dead agent's progress. No network, no env vars.
 //
-//   node scripts/test-demo-controller.mjs
+//   node tests/unit/demo-controller.mjs
 
-import { createDemo, WORK_STEPS } from '../src/demo.mjs'
+import { createDemo, WORK_STEPS } from '../../src/demo.mjs'
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
@@ -24,7 +24,7 @@ function fakeOps({ leaseMs, verifyFails = false, loseLeaseFor = null }) {
       while (shouldContinue()) await sleep(5)
       log.push(['heartbeat-stop', agentId])
     },
-    watchForPeerOutages(agentId, onOutageDetected) {
+    watchForPeerOutages(agentId, _scope, onOutageDetected) {
       watchers.set(agentId, onOutageDetected)
       return () => watchers.delete(agentId)
     },
@@ -68,6 +68,9 @@ function fakeOps({ leaseMs, verifyFails = false, loseLeaseFor = null }) {
     async readProgress(tag) {
       return steps.filter((s) => s.tag === tag).length
     },
+    async nextLaneIndex(agentId, tag) {
+      return steps.filter((s) => s.agentId === agentId && s.tag === tag).length
+    },
     async recordStep(agentId, tag, step) {
       steps.push({ agentId, tag, step })
     },
@@ -102,20 +105,26 @@ const check = (name, ok) => {
   console.log(`  ${ok ? 'pass' : 'FAIL'}: ${name}`)
 }
 
-console.log('demo controller: kill, lapse, takeover, resume\n')
+console.log('demo controller: atlas works first, dies, nova resumes, dies, sol finishes\n')
 
 const ops = fakeOps({ leaseMs: 150 })
-const demo = createDemo({ ops, timings: { stepMs: 60, retryMs: 20, verifyPollMs: 20, watchStartDelayMs: 20, startDelayMs: { nova: 0, sol: 40 } } })
+// Sol starts late enough that nova, not sol, is the one to pick up after atlas.
+const demo = createDemo({ ops, timings: { stepMs: 60, retryMs: 20, verifyPollMs: 20, watchStartDelayMs: 20, reportDelayMs: 0, startDelayMs: { atlas: 0, nova: 40, sol: 500 } } })
 
 await demo.start()
-check('report filed at start', ops.log.some((l) => l[0] === 'report'))
+await waitFor(() => ops.log.some((l) => l[0] === 'report'), 'atlas to file the rack incident')
 check('run is running', demo.getState().phase === 'running')
 
-await waitFor(() => demo.getState().agents.nova.status === 'working', 'nova to start working')
+const atlasClaim = () => ops.log.find((l) => l[0] === 'claim' && l[3] === demo.getState().tag)
+await waitFor(() => atlasClaim(), 'someone to claim the rack incident')
+check('atlas takes the first claim', atlasClaim()[1] === 'atlas')
+
+await waitFor(() => ops.steps.some((s) => s.agentId === 'atlas'), 'atlas to complete a step')
 demo.kill('atlas')
 check('atlas marked dead', demo.getState().agents.atlas.status === 'dead')
+const atlasSteps = ops.steps.filter((s) => s.agentId === 'atlas').length
 
-await waitFor(() => ops.steps.length >= 1, 'nova to complete a step')
+await waitFor(() => ops.steps.some((s) => s.agentId === 'nova'), 'nova to resume and complete a step', 5000)
 demo.kill('nova')
 const killedAt = Date.now()
 const novaSteps = ops.steps.filter((s) => s.agentId === 'nova').length
@@ -129,9 +138,10 @@ const mainSteps = ops.steps.filter((s) => s.tag === state.tag)
 check('sol finished the incident', state.agents.sol.status === 'done')
 check('DC-2 stays down', !state.agents.nova.alive)
 check('sol claimed only after nova went down', solClaim && solClaim[2] >= killedAt)
-check('dead nova never finished', !ops.log.some((l) => l[0] === 'finish' && l[1] === 'nova'))
+check('dead atlas and nova never finished', !ops.log.some((l) => l[0] === 'finish' && l[1] !== 'sol'))
 check('every step done exactly once, in order', JSON.stringify(mainSteps.map((s) => s.step)) === JSON.stringify(WORK_STEPS.map((_, i) => i)))
-check('sol resumed where nova stopped', mainSteps.find((s) => s.agentId === 'sol')?.step === novaSteps)
+check('nova resumed where atlas stopped', mainSteps.find((s) => s.agentId === 'nova')?.step === atlasSteps)
+check('sol resumed where nova stopped', mainSteps.find((s) => s.agentId === 'sol')?.step === atlasSteps + novaSteps)
 check('timeline records the resume', state.timeline.some((e) => e.agentId === 'sol' && e.text.includes('resuming')))
 check('killing an unknown agent throws', (() => { try { demo.kill('mallory'); return false } catch { return true } })())
 check('every agent runs a heartbeat', ['atlas', 'nova', 'sol'].every((id) => ops.log.some((l) => l[0] === 'heartbeat-start' && l[1] === id)))
@@ -146,6 +156,8 @@ ops.watchers.get('sol')('atlas', 'outage-atlas')
 await waitFor(() => demo.getState().agents.atlas.alive, 'the outage flow to bring atlas back', 5000)
 const recovered = demo.getState()
 
+await waitFor(() => ops.log.some((l) => l[0] === 'verify' && l[2] === state.tag), 'a revived peer to verify the rack incident')
+check('the rack incident is verified by a revived peer, not by sol who fixed it', ops.log.find((l) => l[0] === 'verify' && l[2] === state.tag)[1] === 'atlas')
 check('a peer worked the outage incident', ops.log.some((l) => l[0] === 'finish' && l[1] === 'sol' && l[2] === 'outage-atlas'))
 check('the outage is tracked as its own incident', recovered.incidents['outage-atlas']?.phase === 'resolved')
 check('the seeded incident is untouched by the outage work', recovered.incidents[recovered.tag].stepsDone === WORK_STEPS.length)
@@ -159,7 +171,7 @@ check('the verdict is written by an agent other than the finisher', verdict[1] !
 console.log('\nscenario: a permanently failing verify gives up instead of logging forever\n')
 
 const opsF = fakeOps({ leaseMs: 150, verifyFails: true })
-const demoF = createDemo({ ops: opsF, timings: { stepMs: 20, retryMs: 20, verifyPollMs: 20, watchStartDelayMs: 20, startDelayMs: { nova: 0, sol: 40 } } })
+const demoF = createDemo({ ops: opsF, timings: { stepMs: 20, retryMs: 20, verifyPollMs: 20, watchStartDelayMs: 20, reportDelayMs: 0, startDelayMs: { nova: 0, sol: 40 } } })
 await demoF.start()
 await waitFor(() => demoF.getState().phase === 'resolved', 'the incident to resolve (verify-failure test)', 5000)
 const countVerifyEvents = () => demoF.getState().timeline.filter((e) => /verif/.test(e.text)).length
@@ -175,7 +187,7 @@ check('the last word is that it gave up', demoF.getState().timeline.some((e) => 
 console.log('\nscenario: a lapsed lease mid-work drops the claim instead of crashing the worker\n')
 
 const opsL = fakeOps({ leaseMs: 150, loseLeaseFor: 'nova' })
-const demoL = createDemo({ ops: opsL, timings: { stepMs: 60, retryMs: 20, verifyPollMs: 20, watchStartDelayMs: 20, startDelayMs: { atlas: 400, nova: 0, sol: 40 } } })
+const demoL = createDemo({ ops: opsL, timings: { stepMs: 60, retryMs: 20, verifyPollMs: 20, watchStartDelayMs: 20, reportDelayMs: 0, startDelayMs: { atlas: 400, nova: 0, sol: 40 } } })
 await demoL.start()
 await waitFor(() => opsL.log.some((l) => l[0] === 'lease-lost' && l[1] === 'nova'), 'nova to lose its lease', 5000)
 await waitFor(() => demoL.getState().phase === 'resolved', 'the incident to resolve after the lapse', 5000)
@@ -242,6 +254,9 @@ const ops2 = {
     protocolCalls.push({ op: 'readProgress', tag })
     return this.steps.length
   },
+  async nextLaneIndex() {
+    return 0
+  },
   async recordStep(agentId, tag, step) {
     protocolCalls.push({ op: 'recordStep', tag })
     this.steps.push({ agentId, step })
@@ -267,12 +282,12 @@ const ops2 = {
 
 const demo2 = createDemo({
   ops: ops2,
-  timings: { stepMs: 60, retryMs: 20, startDelayMs: { nova: 0, sol: 40 } }
+  timings: { stepMs: 60, retryMs: 20, reportDelayMs: 0, startDelayMs: { atlas: 0, nova: 40, sol: 80 } }
 })
 
 await demo2.start()
 const firstTag = demo2.getState().tag
-await waitFor(() => demo2.getState().agents.nova.status === 'working', 'nova to start working (restart test)')
+await waitFor(() => demo2.getState().agents.atlas.status === 'working', 'atlas to start working (restart test)')
 
 await demo2.start()
 const secondTag = demo2.getState().tag
@@ -293,7 +308,7 @@ console.log('\nscenario: publishReceipt fails\n')
 
 const ops3 = fakeOps({ leaseMs: 150 })
 ops3.publishReceipt = async (state) => { throw new Error('gateway unreachable') }
-const demo3 = createDemo({ ops: ops3, timings: { stepMs: 20, retryMs: 10, startDelayMs: { nova: 0, sol: 1000 } } })
+const demo3 = createDemo({ ops: ops3, timings: { stepMs: 20, retryMs: 10, reportDelayMs: 0, startDelayMs: { nova: 0, sol: 1000 } } })
 
 await demo3.start()
 await waitFor(() => demo3.getState().phase === 'resolved', 'the incident to resolve (receipt-failure scenario)')
@@ -302,6 +317,37 @@ const state3 = demo3.getState()
 
 check('phase stays resolved when publishReceipt throws', state3.phase === 'resolved')
 check('failure is logged in the timeline', state3.timeline.some((e) => e.text.includes('receipt upload failed')))
+
+console.log('\nscenario: DC-1 loses power before atlas files anything\n')
+
+const opsE = fakeOps({ leaseMs: 150 })
+const demoE = createDemo({ ops: opsE, timings: { stepMs: 20, retryMs: 20, verifyPollMs: 20, watchStartDelayMs: 20, reportDelayMs: 100 } })
+await demoE.start()
+demoE.kill('atlas')
+await waitFor(() => opsE.watchers.has('nova') && opsE.watchers.has('sol'), 'nova and sol to start watching')
+await sleep(150)
+check('a dark DC-1 files no rack incident', !opsE.log.some((l) => l[0] === 'report') && !demoE.getState().report)
+opsE.watchers.get('nova')('atlas', 'outage-atlas-run-a')
+opsE.watchers.get('sol')('atlas', 'outage-atlas-run-a', { filed: false })
+await waitFor(() => demoE.getState().agents.atlas.alive, "atlas's outage to bring it back", 5000)
+check("atlas's outage is its only incident", Object.keys(demoE.getState().incidents).join() === 'outage-atlas-run-a')
+check('the filer is recorded as the detector', demoE.getState().incidents['outage-atlas-run-a'].detectedBy === 'nova')
+
+console.log('\nscenario: the agent that filed an outage dies before fixing it\n')
+
+const opsO = fakeOps({ leaseMs: 150 })
+const demoO = createDemo({ ops: opsO, timings: { stepMs: 60, retryMs: 20, verifyPollMs: 20, watchStartDelayMs: 20, reportDelayMs: 5000, startDelayMs: { atlas: 5000, nova: 5000, sol: 5000 } } })
+await demoO.start()
+await waitFor(() => opsO.watchers.has('nova') && opsO.watchers.has('sol'), 'nova and sol to start watching')
+demoO.kill('atlas')
+opsO.watchers.get('nova')('atlas', 'outage-atlas-run-b')
+opsO.watchers.get('sol')('atlas', 'outage-atlas-run-b', { filed: false })
+await waitFor(() => opsO.log.some((l) => l[0] === 'claim' && l[3] === 'outage-atlas-run-b'), 'a peer to claim the outage')
+const firstHolder = opsO.log.find((l) => l[0] === 'claim' && l[3] === 'outage-atlas-run-b')[1]
+const other = firstHolder === 'nova' ? 'sol' : 'nova'
+demoO.kill(firstHolder)
+await waitFor(() => demoO.getState().agents.atlas.alive, 'the surviving peer to finish the outage and revive atlas', 5000)
+check('the peer that did not file still picked the outage up', opsO.log.some((l) => l[0] === 'finish' && l[1] === other && l[2] === 'outage-atlas-run-b'))
 
 const passed = results.every(Boolean)
 console.log(`\nRESULT: ${passed ? 'passed' : 'FAILED'}`)

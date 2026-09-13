@@ -2,8 +2,7 @@
 // topic = hash('hydra/' + tag). Anyone holding a wallet address and the tag can compute the
 // address, but reading the content back also requires a roster private key. Lane payloads are
 // sealed the same roster-scoped way memories are (src/swarm.mjs's sealForRoster/openForAnyAgent).
-// Writing is further restricted to that owner's slot specifically. See ARCHITECTURE.md §7
-// "The Swarm side: one lane per agent".
+// Writing is further restricted to that owner's slot specifically. See ARCHITECTURE.md §4 "Lanes".
 //
 // bee-js's package.json `exports` only allows importing its top-level entry point, and the plain
 // (non-rolling) Feed API there (`bee.feed.makeWriter/.makeReader`) computes the feed's SOC

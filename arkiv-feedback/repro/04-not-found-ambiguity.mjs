@@ -1,7 +1,7 @@
 // feedback.md finding 4: getEntity returns a byte-identical error for a key that never
 // existed and one whose entity expired naturally. A malformed key does differ.
 //
-//   node --env-file=.env scripts/feedback/04-not-found-ambiguity.mjs
+//   node --env-file=.env arkiv-feedback/repro/04-not-found-ambiguity.mjs
 
 import { makeClients, createMemory } from '../../src/arkiv.mjs'
 

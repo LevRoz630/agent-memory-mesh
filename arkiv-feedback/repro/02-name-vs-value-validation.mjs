@@ -2,7 +2,7 @@
 // rejected on-chain, and the engine's rejection message lists the character it just rejected
 // as permitted. Attribute VALUES, by contrast, are validated strictly client-side.
 //
-//   node --env-file=.env scripts/feedback/02-name-vs-value-validation.mjs
+//   node --env-file=.env arkiv-feedback/repro/02-name-vs-value-validation.mjs
 
 import { ExpirationTime, isValidAttributeName, str, stringToPayload, u64 } from '@arkiv-network/sdk'
 import { makeClients } from '../../src/arkiv.mjs'

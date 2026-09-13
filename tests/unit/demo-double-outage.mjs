@@ -1,9 +1,9 @@
 // Two peers down at once: the survivor must detect, claim, and finish both outage incidents
 // concurrently, reviving both — not serialize behind one, and not silently drop the second.
 //
-//   node scripts/test-demo-double-outage.mjs
+//   node tests/unit/demo-double-outage.mjs
 
-import { createDemo } from '../src/demo.mjs'
+import { createDemo } from '../../src/demo.mjs'
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
@@ -22,7 +22,7 @@ function fakeOps({ leaseMs }) {
       while (shouldContinue()) await sleep(5)
       log.push(['heartbeat-stop', agentId])
     },
-    watchForPeerOutages(agentId, onOutageDetected) {
+    watchForPeerOutages(agentId, _scope, onOutageDetected) {
       watchers.set(agentId, onOutageDetected)
       return () => watchers.delete(agentId)
     },
@@ -55,6 +55,9 @@ function fakeOps({ leaseMs }) {
     },
     async readProgress(tag) {
       return steps.filter((s) => s.tag === tag).length
+    },
+    async nextLaneIndex(agentId, tag) {
+      return steps.filter((s) => s.agentId === agentId && s.tag === tag).length
     },
     async recordStep(agentId, tag, step) {
       steps.push({ agentId, tag, step })
@@ -121,8 +124,8 @@ check('two distinct outage incidents are tracked', Boolean(state.incidents['outa
 check('each outage incident has the right subject', state.incidents['outage-atlas']?.subject === 'atlas' && state.incidents['outage-nova']?.subject === 'nova')
 check('sol claimed both outages', ops.log.some((l) => l[0] === 'claim' && l[1] === 'sol' && l[3] === 'outage-atlas') && ops.log.some((l) => l[0] === 'claim' && l[1] === 'sol' && l[3] === 'outage-nova'))
 check('sol finished both outages', ops.log.some((l) => l[0] === 'finish' && l[1] === 'sol' && l[2] === 'outage-atlas') && ops.log.some((l) => l[0] === 'finish' && l[1] === 'sol' && l[2] === 'outage-nova'))
-check('atlas came back online', state.agents.atlas.alive && state.agents.atlas.status === 'watching')
-check('nova came back online', state.agents.nova.alive && state.agents.nova.status === 'watching')
+check('atlas came back online', state.agents.atlas.alive)
+check('nova came back online', state.agents.nova.alive)
 check('atlas heartbeat restarted after revival (not just its original one)', ops.log.filter((l) => l[0] === 'heartbeat-start' && l[1] === 'atlas').length >= 2)
 check('nova heartbeat restarted after revival (not just its original one)', ops.log.filter((l) => l[0] === 'heartbeat-start' && l[1] === 'nova').length >= 2)
 

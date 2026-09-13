@@ -1,12 +1,12 @@
 // Live round trip for lane (feed) writes: stamp our own address with the shared batch, write at
 // an explicit index, read it back with no key at all, and confirm an unwritten index reads as a
-// clean null rather than an error. This is the mechanism ARCHITECTURE.md §7 depends on but had no
+// clean null rather than an error. This is the mechanism ARCHITECTURE.md §4 depends on but had no
 // reproducer for.
 //
-//   node --env-file=.env scripts/verify-lane.mjs
+//   node --env-file=.env tests/live/lane.mjs
 
 import { privateKeyToAccount } from 'viem/accounts'
-import { writeToLane, readLane } from '../src/lane.mjs'
+import { writeToLane, readLane } from '../../src/lane.mjs'
 
 const agentKey = process.env.ARKIV_PRIVATE_KEY_NOVA
 const account = privateKeyToAccount(agentKey)

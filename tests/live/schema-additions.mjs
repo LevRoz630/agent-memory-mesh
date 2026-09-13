@@ -1,10 +1,10 @@
 // Live check: outcome round-trips on a verdict row, memory_type whitelist rejects garbage,
 // queryByTagAndType filters on both tag and type together.
 //
-//   node --env-file=.env scripts/verify-schema-additions.mjs
+//   node --env-file=.env tests/live/schema-additions.mjs
 
 import { ExpirationTime } from '@arkiv-network/sdk'
-import { makeClients, createMemory, queryByTagAndType } from '../src/arkiv.mjs'
+import { makeClients, createMemory, queryByTagAndType } from '../../src/arkiv.mjs'
 
 const { pub, wallet, wsClient } = makeClients({
   privateKey: process.env.ARKIV_PRIVATE_KEY,

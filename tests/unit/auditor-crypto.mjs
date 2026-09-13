@@ -1,7 +1,7 @@
 // Pure crypto round trip for the auditor's fourth roster slot. No network, no env vars needed:
 // it sets AUDITOR_PUBLIC_KEY itself for the duration of the process.
 //
-//   node scripts/test-auditor-crypto.mjs
+//   node tests/unit/auditor-crypto.mjs
 
 import { createECDH } from 'node:crypto'
 
@@ -19,7 +19,7 @@ process.env.ARKIV_PRIVATE_KEY_ATLAS = freshKeypair().priv.toString('hex')
 process.env.ARKIV_PRIVATE_KEY_NOVA = freshKeypair().priv.toString('hex')
 process.env.ARKIV_PRIVATE_KEY_SOL = freshKeypair().priv.toString('hex')
 
-const { sealForRoster, openForAnyAgent, openForAuditor } = await import('../src/swarm.mjs')
+const { sealForRoster, openForAnyAgent, openForAuditor } = await import('../../src/swarm.mjs')
 
 console.log('auditor roster slot round trip\n')
 

@@ -1,8 +1,8 @@
-// The claim-takeover protocol state machine (ARCHITECTURE.md §7). Every write goes through
+// The claim-takeover protocol state machine (ARCHITECTURE.md §4). Every write goes through
 // src/memory.mjs's writeMemory, never src/arkiv.mjs's createMemory directly, so every entity
 // this protocol writes has a real swarm_ref instead of a placeholder.
 
-import { queryByTagAndType, extendMemory, deleteMemory, AGENT_IDS } from './arkiv.mjs'
+import { queryByTagAndType, queryByTagPrefixAndType, extendMemory, deleteMemory, AGENT_IDS } from './arkiv.mjs'
 import { writeMemory } from './memory.mjs'
 import { writeToLane, readLane, nextFreeLaneIndex } from './lane.mjs'
 
@@ -38,6 +38,36 @@ async function incidentIsSpokenFor(ctx, tag) {
   return claims.length > 0
 }
 
+async function heartbeatIsLive(pub, agentId) {
+  return (await queryByTagAndType(pub, { tag: `agent-${agentId}`, memoryType: 'heartbeat', limit: 1 })).length > 0
+}
+
+// A lapsed claim alone can't tell a dead holder from a slow one; its heartbeat can. Every claimant
+// has a `lane` row (tryClaim writes it on winning), so a previous worker whose heartbeat is still
+// live is alive and gets to resume. Among several live previous workers the first in AGENT_IDS
+// goes, so they never all wait on each other.
+async function yieldsToLivePriorWorker(ctx, agentId, tag) {
+  const lanes = await queryByTagAndType(ctx.pub, { tag, memoryType: 'lane' })
+  const priorWorkers = AGENT_IDS.filter((id) => lanes.some((row) => row.attributes.agent_id === id))
+  for (const id of priorWorkers) {
+    if (id === agentId) return false
+    if (await heartbeatIsLive(ctx.pub, id)) return true
+  }
+  return false
+}
+
+// One `lane` row per agent per tag, written the first time that agent holds the claim, so a
+// successor can find this agent's lane even if it dies before publishing anything to it.
+export async function ensureLaneRow(ctx, agentId, tag) {
+  const signer = ctx.signers.get(agentId)
+  if (!signer) throw new Error(`no signer configured for agentId "${agentId}"`)
+  const lanes = await queryByTagAndType(ctx.pub, { tag, memoryType: 'lane' })
+  if (lanes.some((row) => row.owner.toLowerCase() === signer.account.address.toLowerCase())) return
+  await writeMemory(signer.wallet, {
+    agentId, memoryType: 'lane', tag, importance: 5, content: { note: 'lane provenance marker' }, ttlBlocks: LONG_LIVED_BLOCKS,
+  })
+}
+
 // Lowest key wins. `rivals.length === 0` means our own just-written row isn't even visible yet
 // to this query, which is indistinguishable from "we won". It must NOT be read as a win: the
 // caller retries instead of assuming victory.
@@ -55,6 +85,7 @@ export async function tryClaim(ctx, agentId, tag, attempt = 0) {
   if (attempt >= MAX_CLAIM_ATTEMPTS) return { held: false }
 
   if (await incidentIsSpokenFor(ctx, tag)) return { held: false }
+  if (await yieldsToLivePriorWorker(ctx, agentId, tag)) return { held: false }
 
   const written = await writeMemory(signer.wallet, {
     agentId, memoryType: 'claim', tag, importance: 5, content: {}, ttlBlocks: CLAIM_LEASE_BLOCKS,
@@ -86,6 +117,7 @@ export async function tryClaim(ctx, agentId, tag, attempt = 0) {
       return tryClaim(ctx, agentId, tag, attempt + 1)
     }
 
+    await ensureLaneRow(ctx, agentId, tag)
     return { held: true, entityKey: written.entityKey }
   } catch (e) {
     // Any failure past this point (receipt lookup, settle wait, requery) must not leave an
@@ -96,7 +128,7 @@ export async function tryClaim(ctx, agentId, tag, attempt = 0) {
 }
 
 // The engine rejects an extension two different ways, and they are not the same news. Both messages
-// below were captured live (scripts/verify-claim-lapse.mjs re-captures them on every run):
+// below were captured live (tests/live/claim-lapse.mjs re-captures them on every run):
 //   "entity 0x… expired at block N" — the entity is already gone. The lease is lost.
 //   "entity 0x… already expires at block N, so extending it to M would shorten its life" — this
 //     renewal followed so close behind the previous one that it would move the expiry backwards.
@@ -173,7 +205,24 @@ export async function startHeartbeat(ctx, agentId, shouldContinue = () => true) 
 const PEER_WATCH_POLL_MS = 4000
 const EMPTY_POLLS_BEFORE_OUTAGE = 2
 
-export function watchForPeerOutages(ctx, watchingAgentId, onOutageDetected) {
+export function outageTagPrefix(peerId, scope) {
+  return `outage-${peerId}-${scope}-`
+}
+
+// The nth outage of a peer in a run is `outage-<peer>-<scope>-<n>`, where n counts that peer's
+// outages in this run that already have a `done` row. Every watcher reads n from the chain, so they
+// converge on one tag instead of each naming the outage from what it happened to see. A dead peer
+// only comes back by its outage being finished, so dying again after that is outage n+1. `scope`
+// (the demo run's id) keeps rows an earlier run left on chain from passing for this one's.
+async function currentOutageTag(pub, peerId, scope) {
+  const prefix = outageTagPrefix(peerId, scope)
+  const dones = await queryByTagPrefixAndType(pub, { tagPrefix: prefix, memoryType: 'done' })
+  return prefix + new Set(dones.map((r) => r.attributes.tag)).size
+}
+
+// onOutage(peerId, tag, { filed }) fires once per tag per watcher, whether this watcher filed the
+// row or found it already there, so every live peer can pick the incident up — not only the filer.
+export function watchForPeerOutages(ctx, watchingAgentId, scope, onOutage) {
   const { pub, signers } = ctx
   let stopped = false
   // A single empty query is not evidence a peer is down: a row that was just renewed stays
@@ -182,38 +231,43 @@ export function watchForPeerOutages(ctx, watchingAgentId, onOutageDetected) {
   const emptyPolls = new Map()
   // Our own just-filed incident is invisible to the existence check below for a block or two, so
   // the on-chain check alone would let the next poll file a second one.
-  const filed = new Set()
+  const handled = new Set()
+  const pollPeer = async (peerId) => {
+    const heartbeats = await queryByTagAndType(pub, { tag: `agent-${peerId}`, memoryType: 'heartbeat', limit: 1 })
+    if (heartbeats.length > 0) {
+      emptyPolls.set(peerId, 0)
+      return
+    }
+    const misses = (emptyPolls.get(peerId) ?? 0) + 1
+    emptyPolls.set(peerId, misses)
+    if (misses < EMPTY_POLLS_BEFORE_OUTAGE) return
+
+    const outageTag = await currentOutageTag(pub, peerId, scope)
+    if (handled.has(outageTag)) return
+    const existing = await queryByTagAndType(pub, { tag: outageTag, memoryType: 'event', limit: 1 })
+    const filed = existing.length === 0
+    if (filed) {
+      const signer = signers.get(watchingAgentId)
+      await writeMemory(signer.wallet, {
+        agentId: watchingAgentId, memoryType: 'event', tag: outageTag, importance: 8,
+        content: { note: `${peerId} heartbeat lapsed` }, ttlBlocks: LONG_LIVED_BLOCKS,
+      })
+    }
+    handled.add(outageTag)
+    if (!stopped) onOutage?.(peerId, outageTag, { filed })
+  }
+  // One failed query must not end the watch: a watcher that has quietly stopped is a peer nobody
+  // is watching for the rest of the run.
   const loop = async () => {
     while (!stopped) {
       for (const peerId of AGENT_IDS) {
         if (stopped) return
         if (peerId === watchingAgentId) continue
-        const peerTag = `agent-${peerId}`
-        const heartbeats = await queryByTagAndType(pub, { tag: peerTag, memoryType: 'heartbeat', limit: 1 })
-        if (heartbeats.length > 0) {
-          emptyPolls.set(peerId, 0)
-          filed.delete(peerId)
-          continue // peer is alive
+        try {
+          await pollPeer(peerId)
+        } catch (e) {
+          console.error(`watchForPeerOutages(${watchingAgentId}) poll of ${peerId} failed:`, e.message)
         }
-        const misses = (emptyPolls.get(peerId) ?? 0) + 1
-        emptyPolls.set(peerId, misses)
-        if (misses < EMPTY_POLLS_BEFORE_OUTAGE) continue
-        if (filed.has(peerId)) continue
-
-        const outageTag = `outage-${peerId}`
-        const existing = await queryByTagAndType(pub, { tag: outageTag, memoryType: 'event', limit: 1 })
-        if (existing.length > 0) {
-          filed.add(peerId)
-          continue // already filed, by us or another watcher
-        }
-
-        const signer = signers.get(watchingAgentId)
-        await writeMemory(signer.wallet, {
-          agentId: watchingAgentId, memoryType: 'event', tag: outageTag, importance: 8,
-          content: { note: `${peerId} heartbeat lapsed` }, ttlBlocks: LONG_LIVED_BLOCKS,
-        })
-        filed.add(peerId)
-        onOutageDetected?.(peerId, outageTag)
       }
       await sleep(PEER_WATCH_POLL_MS)
     }
@@ -231,7 +285,7 @@ export async function takeOver(ctx, tag) {
     let index = 0
     let latestContent = null
     let latestIndex = -1
-    // Walk from index 0 until a clean 404, matching the discovery method ARCHITECTURE.md §7
+    // Walk from index 0 until a clean 404, matching the discovery method ARCHITECTURE.md §4
     // specifies. Small counts expected at demo scale.
     while (true) {
       const content = await readLane(ownerAddress, tag, index)
@@ -253,13 +307,13 @@ export async function finish(ctx, agentId, tag, entityKey, fixContent) {
   if (!agentPrivateKeyHex) throw new Error(`no private key configured for agentId "${agentId}"`)
   const index = await nextFreeLaneIndex(signer.account.address, tag)
   await writeToLane(agentPrivateKeyHex, signer.account.address, tag, index, { kind: 'fix', ...fixContent })
-  await writeMemory(signer.wallet, {
-    agentId, memoryType: 'lane', tag, importance: 5, content: { note: 'lane provenance marker' }, ttlBlocks: LONG_LIVED_BLOCKS,
-  })
+  await ensureLaneRow(ctx, agentId, tag)
   await writeMemory(signer.wallet, {
     agentId, memoryType: 'done', tag, importance: 5, content: { note: 'work complete' }, ttlBlocks: LONG_LIVED_BLOCKS,
   })
-  await deleteMemory(signer.wallet, { entityKey })
+  // The `done` row already closes the incident. A claim that lapsed during the last step can't be
+  // deleted, and throwing here would report a finished incident as a failed one.
+  await deleteMemory(signer.wallet, { entityKey }).catch(() => {})
 }
 
 export async function verify(ctx, verifierAgentId, tag) {
@@ -272,12 +326,15 @@ export async function verify(ctx, verifierAgentId, tag) {
     if (pollAttempt >= VERIFY_POLL_MAX_ATTEMPTS) {
       throw new Error(`verify(): no 'done' row appeared for tag "${tag}" within timeout`)
     }
-    doneRows = await queryByTagAndType(pub, { tag, memoryType: 'done', limit: 1 })
+    doneRows = await queryByTagAndType(pub, { tag, memoryType: 'done' })
     if (doneRows.length === 0) {
       await sleep(2000)
       pollAttempt += 1
     }
   }
+  // Checked against the chain-enforced owner of the `done` row, not anything the caller remembers.
+  const verifierAddress = verifierSigner.account.address.toLowerCase()
+  if (doneRows.some((row) => row.owner.toLowerCase() === verifierAddress)) return { outcome: null, refused: true }
   const doneRow = doneRows[0]
   const lanes = await takeOver(ctx, tag)
   const finisherLane = lanes.find((l) => l.ownerAddress.toLowerCase() === doneRow.owner.toLowerCase())
