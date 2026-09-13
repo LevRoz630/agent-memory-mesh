@@ -100,3 +100,30 @@ Expired entity `0x6a9bf0cc…`. Distinguishing "expired" from "unknown key" in a
 caching the expiry height at write time.
 
 Reproduce: `arkiv-feedback/repro/04-not-found-ambiguity.mjs` (writes a short TTL, waits past it)
+
+---
+
+## 5. `watchEntityEvents` silently polls unless it gets a websocket and no `fromBlock`
+
+The same call either subscribes or polls, decided by viem's `watchEvent` from the transport and
+options, and the watcher gives no sign which one it chose. Ten seconds of each, counting the
+requests the transport sees:
+
+| Client / options                                   | Calls in 10 s                                              |
+| -------------------------------------------------- | ---------------------------------------------------------- |
+| `http()` (the transport in the JSDoc example)      | `eth_newFilter` 1, `eth_blockNumber` 3, `eth_getLogs` 2     |
+| `webSocket()`                                      | `eth_subscribe(logs)` 1, nothing else                      |
+| `webSocket()` with `fromBlock: head - 5n`          | `eth_newFilter` 1, `eth_blockNumber` 3, `eth_getLogs` 3     |
+
+The docs point the wrong way: `pollingInterval` is documented as "How often to poll … Defaults to
+half a block" with no mention that it's ignored over a websocket, and `fromBlock` ("Replay from this
+block before following the head") doesn't say it turns following the head into polling too. An app
+built to react "from the stream without polling" can pass review while it polls.
+
+Request: say in the JSDoc which transports subscribe, use `webSocket()` in the example, and note that
+`fromBlock` forces polling (or replay with `eth_getLogs` and then subscribe).
+
+Hydra's control room subscribes over `webSocket()` without `fromBlock` (`src/arkiv.mjs`
+`makeStreamClient`, `src/chain-watch.mjs`).
+
+Reproduce: `arkiv-feedback/repro/05-watch-silently-polls.mjs` (read-only, no transactions)

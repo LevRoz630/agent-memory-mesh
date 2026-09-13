@@ -1,6 +1,6 @@
 # Arkiv friction report — Hydra
 
-Four issues hit while building Hydra's claim-takeover protocol on `@arkiv-network/sdk@0.8.1`
+Five issues hit while building Hydra's claim-takeover protocol on `@arkiv-network/sdk@0.8.1`
 against Tiramisu. Each is reproduced live, with a runnable script — see `feedback.md` for the
 full write-up, repro output, and exact entity keys/tx hashes. This file is the short version.
 
@@ -48,3 +48,12 @@ as a separate, long-lived provenance record, since the claim entity itself gives
 it's gone).
 
 Reproduce: `arkiv-feedback/repro/04-not-found-ambiguity.mjs`
+
+## 5. `watchEntityEvents` silently polls unless it gets a websocket and no `fromBlock`
+
+Over `http()`, the transport in its own JSDoc example, the watcher polls `eth_getLogs`. Over
+`webSocket()` it holds one `eth_subscribe(logs)`. Pass `fromBlock` on a websocket and it's back to
+polling. Nothing in the return value or the docs says which you got, and `pollingInterval` is
+documented as if it always applies. We only caught it by counting RPC calls.
+
+Reproduce: `arkiv-feedback/repro/05-watch-silently-polls.mjs`

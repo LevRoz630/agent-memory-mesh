@@ -186,7 +186,7 @@ next step, and the crypto doesn't change to get there, only who holds which key.
 - **Encryption**: AES-256-GCM content, ECIES (ECDH secp256k1 + HKDF) per-recipient key wrapping.
 - **Arkiv schema**: one entity type, seven possible attributes, five `memory_type` values plus
   `outcome` on verdicts.
-- **Arkiv SDK friction found and reproduced**: 4 issues (read/write attribute shape asymmetry,
+- **Arkiv SDK friction found and reproduced**: 5 issues (read/write attribute shape asymmetry,
   contradictory name validation, missing nonce manager for concurrent writes, identical error for
   a never-created vs. an expired entity) — each with a live, runnable reproducer.
 - **Bounty fit**: Arkiv (schema draft at `docs/ARKIV_SCHEMA.md`, friction report, expiry-as-mechanism,
