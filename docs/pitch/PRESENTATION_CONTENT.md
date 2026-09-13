@@ -187,10 +187,10 @@ next step, and the crypto doesn't change to get there, only who holds which key.
 - **Encryption**: AES-256-GCM content, ECIES (ECDH secp256k1 + HKDF) per-recipient key wrapping.
 - **Arkiv schema**: one entity type, seven possible attributes, five `memory_type` values plus
   `outcome` on verdicts.
-- **Arkiv SDK friction found and reproduced**: 5 issues (read/write attribute shape asymmetry,
+- **Arkiv SDK friction found and reproduced**: 6 issues (read/write attribute shape asymmetry,
   contradictory name validation, missing nonce manager for concurrent writes, identical error for
   a never-created vs. an expired entity, `watchEntityEvents` silently polling unless given a
-  websocket and no `fromBlock`) — each with a live, runnable reproducer.
+  websocket and no `fromBlock`, a failed gas estimate leaving a nonce gap that freezes the wallet) — each with a live, runnable reproducer.
 - **Bounty fit**: Arkiv (schema draft at `docs/ARKIV_SCHEMA.md`, friction report, expiry-as-mechanism,
   live-wire subscription over `watchEntityEvents`) and Swarm (genuine chunk-path uploads with a
   locally signed postage stamp, a real reason for decentralized storage, not just "because we can").

@@ -1,6 +1,6 @@
 // feedback.md finding 3: concurrent createEntity calls from one wallet collide on nonce
-// unless the account was built with viem's nonceManager. Builds both accounts here, since
-// src/arkiv.mjs's makeClients now always passes one.
+// unless the account was built with viem's nonceManager. Builds both accounts here; src/arkiv.mjs
+// counts nonces itself instead (finding 6).
 //
 //   node --env-file=.env arkiv-feedback/repro/03-nonce-manager.mjs
 

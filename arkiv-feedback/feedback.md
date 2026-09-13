@@ -130,3 +130,38 @@ Hydra's control room subscribes over `webSocket()` without `fromBlock` (`src/ark
 `makeStreamClient`, `src/chain-watch.mjs`).
 
 Reproduce: `arkiv-feedback/repro/05-watch-silently-polls.mjs` (read-only, no transactions)
+
+---
+
+## 6. With viem's `nonceManager`, one write that fails gas estimation freezes the wallet
+
+Finding 3's fix is to build the account with `nonceManager`. That creates a worse failure under
+concurrency. `sendArkivTransaction` calls `writeContract`, which takes a nonce from the manager before
+estimating gas. If the estimate reverts, for example extending an entity that just expired or was
+deleted, the write throws (`txHash` undefined) but the manager never gets that nonce back. The writes
+queued after it are broadcast with the next nonces and sit in the mempool waiting for the missing one:
+
+```
+g1   extend valid entity     nonce 305  landed
+bad  extend deleted entity   nonce 306  "no entity … may have been deleted" (never broadcast)
+g2   extend valid entity     nonce 307  still pending after 40 s; pending count stays at 306
+```
+
+Nothing times out and nothing reports an error. The wallet is frozen until some later write happens
+to reuse nonce 306, and then everything queued behind it lands in one block. In a lease protocol
+this is routine: renewing a lease that lapsed a moment ago is exactly the write that fails estimation.
+For Hydra it stalled every renewal on a wallet, heartbeats included, for 20–80 s, so peers declared a
+live agent dead and claims lapsed mid-work. On-chain it showed up as blocks with none of our
+transactions, then 8 of them in one block. Calling `nonceManager.reset()` after a failure that never
+broadcast lets the next write fill the gap (8.6 s in the reproducer), but it races with writes still
+being prepared.
+
+Request: estimate gas before taking a nonce, or give the nonce back (`nonceManager.reset`) when
+`writeContract` throws before broadcasting, and mention it next to finding 3's advice.
+
+Hydra counts nonces itself: a per-wallet queue prepares and broadcasts one write at a time, passes the
+nonce through `createEntity`/`extendEntity`/`deleteEntity`'s `txParams`, and moves on at the
+`eth_sendRawTransaction` so receipts are still awaited concurrently (`src/arkiv.mjs` `mutate`). Live,
+52/52 valid renewals landed alongside 13 deliberately failing ones, slowest 4.8 s, no gap.
+
+Reproduce: `arkiv-feedback/repro/06-nonce-gap-freezes-wallet.mjs` (runs both arms, about 90 s)

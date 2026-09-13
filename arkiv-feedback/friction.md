@@ -1,6 +1,6 @@
 # Arkiv friction report — Hydra
 
-Five issues hit while building Hydra's claim-takeover protocol on `@arkiv-network/sdk@0.8.1`
+Six issues hit while building Hydra's claim-takeover protocol on `@arkiv-network/sdk@0.8.1`
 against Tiramisu. Each is reproduced live, with a runnable script — see `feedback.md` for the
 full write-up, repro output, and exact entity keys/tx hashes. This file is the short version.
 
@@ -57,3 +57,12 @@ polling. Nothing in the return value or the docs says which you got, and `pollin
 documented as if it always applies. We only caught it by counting RPC calls.
 
 Reproduce: `arkiv-feedback/repro/05-watch-silently-polls.mjs`
+
+## 6. With `nonceManager`, one write that fails gas estimation freezes the wallet
+
+The nonce is taken before gas is estimated and isn't given back when the estimate reverts, which is
+routine when renewing a lease that just lapsed. Every later write from the wallet waits in the mempool
+behind the gap, with no error and no timeout. For Hydra that stalled heartbeats for 20–80 s and made
+peers declare live agents dead. We now count nonces per wallet ourselves.
+
+Reproduce: `arkiv-feedback/repro/06-nonce-gap-freezes-wallet.mjs`
