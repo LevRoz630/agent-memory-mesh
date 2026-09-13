@@ -1,12 +1,11 @@
-// Entrypoint: the shared REST app, the live websocket push on /live, and the control room's demo
-// endpoints.
+// Entrypoint: the shared REST app plus the control room's demo endpoints, with demo state pushed
+// over the websocket on /live.
 
 import { createServer } from 'node:http'
 import { createECDH, timingSafeEqual } from 'node:crypto'
 import { WebSocketServer } from 'ws'
-import { createApp, serializeAttrs } from './src/app.mjs'
-import { makeClients, makeAgentSigners, watchMemories, AGENT_IDS } from './src/arkiv.mjs'
-import { readMemoryContent } from './src/memory.mjs'
+import { createApp } from './src/app.mjs'
+import { makeClients, makeAgentSigners, AGENT_IDS } from './src/arkiv.mjs'
 import { downloadSealed, decryptWithKey } from './src/swarm.mjs'
 import { createDemo } from './src/demo.mjs'
 import { createDemoOps } from './src/demo-ops.mjs'
@@ -20,7 +19,7 @@ if (!privateKey) {
 }
 
 // Reads need a client, not an identity. The funder key is only here to build one.
-const { pub, wsClient } = makeClients({ privateKey })
+const { pub } = makeClients({ privateKey })
 
 const signers = makeAgentSigners()
 if (signers.size === 0) {
@@ -63,6 +62,8 @@ function requireDemoPassword(req, res, next) {
   }
   next()
 }
+
+app.get('/', (_req, res) => res.redirect('/control.html'))
 
 app.get('/api/demo/state', (_req, res) => res.json(demo.getState()))
 
@@ -112,41 +113,5 @@ app.get('/api/demo/report', async (req, res) => {
     res.status(500).json({ error: e.message })
   }
 })
-
-// viem's websocket transport reconnects the socket but does not restore the eth_subscribe
-// subscription behind it, so a dropped subscription stays dropped unless we re-arm it.
-let unwatch = null
-function startWatch() {
-  unwatch = watchMemories(wsClient, pub, {
-    onEvent: (e) => broadcast({ type: 'log', ...e }),
-    onMemory: async ({ entityKey, owner, expiresAt, attributes }) => {
-      let content = null
-      try {
-        content = await readMemoryContent(attributes)
-      } catch (e) {
-        content = { error: `content unavailable: ${e.message}` }
-      }
-      console.log(`live: agent_memory written by ${owner}, key=${entityKey}`)
-      broadcast({
-        type: 'memory', key: entityKey, owner, expiresAt: String(expiresAt),
-        attributes: serializeAttrs(attributes),
-        content,
-      })
-    },
-    onExtended: ({ entityKey, owner, expiresAt }) => {
-      broadcast({ type: 'extended', entityKey, owner, expiresAt: String(expiresAt) })
-    },
-    onDeleted: ({ entityKey }) => {
-      broadcast({ type: 'deleted', entityKey })
-    },
-    onError: (err) => {
-      console.error('watch error:', err.message)
-      broadcast({ type: 'watch_error', message: err.message })
-      try { unwatch?.() } catch {}
-      setTimeout(startWatch, 3000)
-    },
-  })
-}
-startWatch()
 
 httpServer.listen(PORT, () => console.log(`listening on http://localhost:${PORT}`))

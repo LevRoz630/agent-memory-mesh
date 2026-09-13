@@ -15,7 +15,7 @@ public/control.html           control room: start a run, cut an agent's power
 scripts/orchestrator.mjs      the same run headless, with scheduled kills
         │
         ▼
-server.mjs                    REST app (src/app.mjs) + /api/demo/* + WebSocket push on /live
+server.mjs                    REST app (src/app.mjs) + /api/demo/* + demo state pushed on /live
         │
         ▼
 src/demo.mjs                  peer-symmetric controller: per agent, heartbeat + peer watch +
@@ -70,7 +70,7 @@ by comparing against the current block.
 
 **Live view.** `watchEntityEvents` delivers `{entityKey, owner, expiresAt}` only; each event is
 read back to check `app` before being treated as ours. The watch needs a `webSocket()`-transport
-client; a client that can't hold one open falls back to polling `/api/recent`.
+client. The audit exporter (§6) is its consumer.
 
 **Demo clamp.** `DEMO_MAX_TTL_BLOCKS`, applied only to `claim` writes made through
 `POST /api/memory`, caps a claim's requested TTL for recorded demos. The response reports
@@ -239,9 +239,8 @@ appliedTtlBlocks, appliedExpiresAt, requestedTtlBlocks, ttlClamped}`.
 **Read.** `GET /api/query?agentId=…` → Arkiv predicate → fetch and decrypt each row's Swarm
 content; a failed fetch degrades to `{error: 'content unavailable: …'}` on that row only.
 
-**Live.** `watchEntityEvents` → read back → broadcast over `/live`: `memory` (new row),
-`extended` (lease renewed), `deleted` (row released). Falls back to `/api/recent` polling where a
-WebSocket can't stay open.
+**Live.** Every change to the demo state is pushed over the WebSocket on `/live` as a `demo`
+message; the control room renders from it. `/` redirects to `/control.html`.
 
 **Demo.** `POST /api/demo/start`, `POST /api/demo/kill/:agentId` (both behind `DEMO_PASSWORD` when
 set), `GET /api/demo/state`, `GET /api/demo/report?as=<agent|outsider>`.
@@ -280,5 +279,5 @@ Arkiv's metadata (who claimed what, when) needs no key at all — it's already p
 - All three agents' keys and the auditor's key can sit in the same process/`.env`; real isolation
   between them requires separate processes with separate custody, which isn't built. The server
   holding the agent keys signs `POST /api/memory` for whichever `agentId` the caller names, and
-  `GET /api/query`, `/api/recent` and `/api/demo/report?as=<agent>` return decrypted content to any
+  `GET /api/query` and `/api/demo/report?as=<agent>` return decrypted content to any
   caller — the encryption protects content on Swarm and at the gateway, not from this server's API.

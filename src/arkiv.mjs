@@ -128,12 +128,6 @@ export async function queryMemories(pub, { agentId, memoryType, minImportance, t
   return runQuery(pub, pred, limit)
 }
 
-// Arkiv rejects a query with no predicate, and `app` is the one attribute every participant
-// writes, so this selects the whole index without enumerating who is on it.
-export async function queryRecent(pub, { limit = 20 } = {}) {
-  return runQuery(pub, eq(ATTR.app, str(APP)), limit)
-}
-
 // "Is anyone on this?" has to be answerable regardless of who wrote the claim, so it cannot go
 // through queryMemories, which is scoped to a single agent_id.
 export async function queryByTag(pub, { tag, limit = 20 }) {

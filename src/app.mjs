@@ -1,15 +1,14 @@
-// REST surface used by server.mjs, which adds a websocket push on top at /live. /api/recent
-// stays available as a polling fallback for clients that can't hold a websocket open.
+// REST surface used by server.mjs, which adds the control room's demo endpoints and /live on top.
 
 import express from 'express'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
-import { queryMemories, queryRecent } from './arkiv.mjs'
+import { queryMemories } from './arkiv.mjs'
 import { writeMemory, readMemoryContent } from './memory.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
-export function serializeAttrs(a) {
+function serializeAttrs(a) {
   return Object.fromEntries(Object.entries(a ?? {}).map(([k, v]) => [k, typeof v === 'bigint' ? v.toString() : v]))
 }
 
@@ -87,19 +86,6 @@ export function createApp({ pub, signers }) {
       res.json(await Promise.all(entities.map(withContent)))
     } catch (e) {
       console.error('query failed:', e)
-      res.status(500).json({ error: e.message })
-    }
-  })
-
-  // Each row costs a Swarm round trip (8s timeout each), so 20 of them can outrun a serverless
-  // function's time limit on a slow gateway.
-  app.get('/api/recent', async (_req, res) => {
-    try {
-      res.set('Cache-Control', 's-maxage=3')
-      const entities = await queryRecent(pub, { limit: 8 })
-      res.json(await Promise.all(entities.map(withContent)))
-    } catch (e) {
-      console.error('recent failed:', e)
       res.status(500).json({ error: e.message })
     }
   })

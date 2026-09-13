@@ -1,5 +1,5 @@
-// A Claude session deciding for itself whether to remember or recall, through the same
-// endpoints the browser UI uses, so its writes also show up live on the page.
+// A Claude session deciding for itself whether to remember or recall, through the server's REST
+// endpoints.
 //
 //   node scripts/agent-chat.mjs <atlas|nova|sol> "<message>"
 

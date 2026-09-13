@@ -1,5 +1,5 @@
-// npm run demo: Atlas remembers, Nova recalls the same memory, a compound query, then the
-// expiry demo. Needs `npm start` running in another terminal.
+// npm run demo: Atlas remembers, Nova recalls the same memory, then a compound query. Needs
+// `npm start` running in another terminal.
 
 import { spawn } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
@@ -39,7 +39,7 @@ if (!(await checkServer())) {
 const runTag = `demo-${Date.now().toString().slice(-6)}`
 
 try {
-  banner('1/4 — Atlas remembers')
+  banner('1/3 — Atlas remembers')
   await run('node', [
     join(__dirname, 'agent-chat.mjs'), 'atlas',
     `Record an incident: checkout is returning 500s on /api/pay, p99 latency 4.2s, started 14:05. ` +
@@ -48,7 +48,7 @@ try {
 
   await wait(2000)
 
-  banner('2/4 — Nova recalls')
+  banner('2/3 — Nova recalls')
   await run('node', [
     join(__dirname, 'agent-chat.mjs'), 'nova',
     'Is there an open incident I should be picking up? Check what Atlas has filed.',
@@ -56,7 +56,7 @@ try {
 
   await wait(1000)
 
-  banner(`3/4 — compound query: agent_id=atlas AND memory_type=event AND tag STARTSWITH "${runTag}-"`)
+  banner(`3/3 — compound query: agent_id=atlas AND memory_type=event AND tag STARTSWITH "${runTag}-"`)
   if (!(await checkServer())) throw new Error(`lost connection to ${BASE_URL} — is npm start still running?`)
   const params = new URLSearchParams({ agentId: 'atlas', memoryType: 'event', tagPrefix: `${runTag}-` })
   const rows = await (await fetch(`${BASE_URL}/api/query?${params}`)).json()
@@ -69,9 +69,6 @@ try {
   if (rows.length === 0) {
     throw new Error(`compound query returned 0 rows — the memory was never written as expected, or expired before step 3`)
   }
-
-  banner('4/4 — Mission 02: built to expire')
-  await run('node', [join(__dirname, 'demo-expiry.mjs')])
 
   banner('demo complete')
 } catch (e) {

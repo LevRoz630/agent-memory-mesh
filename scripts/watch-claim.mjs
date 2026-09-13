@@ -1,5 +1,5 @@
-// Watch an existing claim entity lapse live, rather than writing one ourselves like
-// demo-expiry.mjs does. Polls the same compound query until the row count drops to zero.
+// Watch an existing claim entity lapse live. Polls the same compound query until the row count
+// drops to zero.
 //
 //   node --env-file=.env scripts/watch-claim.mjs <agentId> [tagPrefix]
 
