@@ -116,8 +116,13 @@ export function createAgent({ agentId, runId, ops, send = () => {}, timings = {}
       setStatus('working')
       let workingOn = true
       let leaseLost = false
+      let lostReason = ''
       const renewal = ops.renewClaim(agentId, claim.entityKey, () => workingOn && live())
-        .then((result) => { if (result?.lost) leaseLost = true })
+        .then((result) => {
+          if (!result?.lost) return
+          leaseLost = true
+          lostReason = result.reason ? ` (${result.reason})` : ''
+        })
         .catch((e) => event(`lease renewal failed: ${e.message}`))
       try {
         let step = await ops.readProgress(tag)
@@ -139,7 +144,7 @@ export function createAgent({ agentId, runId, ops, send = () => {}, timings = {}
       await renewal
       if (!live()) return
       if (leaseLost) {
-        event(`lease on ${tag} lapsed before the work finished, dropping the claim`)
+        event(`lease on ${tag} lapsed before the work finished, dropping the claim${lostReason}`)
         setStatus('waiting')
         await sleep(t.retryMs)
         continue

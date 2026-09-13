@@ -17,10 +17,12 @@ const room = await bootControlRoom({
   },
 })
 
-process.on('SIGINT', () => {
-  room.stop()
-  process.exit(0)
-})
+for (const signal of ['SIGINT', 'SIGTERM']) {
+  process.on(signal, () => {
+    room.stop()
+    process.exit(0)
+  })
+}
 
 for (const arg of process.argv.slice(2)) {
   const [agentId, seconds] = arg.split('@')

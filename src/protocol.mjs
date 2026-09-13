@@ -107,6 +107,15 @@ export async function tryClaim(ctx, agentId, tag, attempt = 0) {
     }
 
     await ensureLaneRow(ctx, agentId, tag)
+    // The settle rounds and the lane row above eat about half the lease before the holder's first
+    // renewal is even due, which live runs showed is enough to lose it. Start the work on a full lease.
+    try {
+      await extendMemory(signer.wallet, { entityKey: written.entityKey, ttlBlocks: CLAIM_LEASE_BLOCKS })
+    } catch (e) {
+      const kind = classifyExtendError(e)
+      if (kind === 'lapsed') return { held: false }
+      if (kind === 'other') throw e
+    }
     return { held: true, entityKey: written.entityKey }
   } catch (e) {
     // Any failure past this point (receipt lookup, settle wait, requery) must not leave an
@@ -151,7 +160,7 @@ export async function renewClaim(ctx, agentId, entityKey, leaseBlocks = CLAIM_LE
       if (kind === 'other') throw e
       // Nothing left to renew: looping on a lapsed entity would keep the caller convinced it still
       // holds a claim another agent is free to take.
-      if (kind === 'lapsed') return { lost: true }
+      if (kind === 'lapsed') return { lost: true, reason: e.message }
     }
   }
   return { lost: false }
