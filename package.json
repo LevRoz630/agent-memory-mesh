@@ -10,26 +10,16 @@
   "description": "Agent memory as content (Swarm) + expiring index (Arkiv) — ETHRome 2026",
   "scripts": {
     "start": "node --env-file=.env server.mjs",
-    "demo": "node --env-file=.env scripts/run-demo.mjs",
     "demo:protocol": "node --env-file=.env scripts/orchestrator.mjs",
     "feedback:repro": "node --env-file=.env arkiv-feedback/repro/run-all.mjs",
     "test": "for f in tests/unit/*.mjs; do node \"$f\" || exit 1; done",
-    "verify:crypto": "node tests/unit/envelope-crypto.mjs",
-    "verify:auditor-crypto": "node tests/unit/auditor-crypto.mjs",
-    "verify:renew-stop": "node tests/unit/renew-stops.mjs",
-    "verify:demo-controller": "node tests/unit/demo-controller.mjs",
-    "verify:double-outage": "node tests/unit/demo-double-outage.mjs",
-    "verify:receipt": "node tests/unit/receipt.mjs",
     "verify:envelope": "node --env-file=.env tests/live/envelope-live.mjs",
     "verify:lane": "node --env-file=.env tests/live/lane.mjs",
     "verify:takeover": "node --env-file=.env tests/live/takeover.mjs",
     "verify:tie-break": "node --env-file=.env tests/live/tie-break.mjs",
-    "verify:peer-symmetry": "node --env-file=.env tests/live/demo-peer-symmetry.mjs",
-    "generate:auditor-key": "node scripts/generate-auditor-key.mjs",
-    "audit:export": "node scripts/audit-exporter.mjs"
+    "verify:peer-symmetry": "node --env-file=.env tests/live/demo-peer-symmetry.mjs"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.125.0",
     "@arkiv-network/sdk": "^0.8.0",
     "@ethersphere/bee-js": "^13.1.0",
     "express": "^4.21.0",

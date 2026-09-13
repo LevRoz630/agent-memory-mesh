@@ -12,7 +12,7 @@ entirely in its attributes — there is no separate on-chain type per role. Full
 | `agent_id`    | `str` | `atlas` \| `nova` \| `sol`                                        |
 | `memory_type` | `str` | `event` \| `claim` \| `lane` \| `done` \| `verdict` \| `heartbeat` — whitelisted client-side, nothing else accepted |
 | `tag`         | `str` | `incident-<run>` for atlas's rack incident; `outage-<agent>-<run>-<n>` for an outage a peer filed about a lapsed heartbeat (both shared by the first five roles); `agent-<agent>` for a `heartbeat` |
-| `importance`  | `u64` | 0–10, supports `gte` filtering                                     |
+| `importance`  | `u64` | 0–10                                                               |
 | `swarm_ref`   | `str` | 64-hex Swarm chunk address; every row has one, even `claim`         |
 | `outcome`     | `str` | `fixed` \| `reopened` — present only on `verdict` rows              |
 
@@ -46,7 +46,7 @@ a `lane` row on the incident. A live one is slow, not dead, and keeps the right 
 
 ## Queries
 
-Every query composes `eq`/`gte`/`startsWith` under `and` — Arkiv rejects a predicate-free query,
+Every query composes `eq`/`startsWith` under `and` — Arkiv rejects a predicate-free query,
 so "everything" is `eq(app, 'hydra')` rather than an unfiltered scan.
 
 - **Is anyone alive on this incident?** `and(eq(app,'hydra'), eq(tag,'incident-42'), eq(memory_type,'claim'))` — zero rows means free to take; one row means its owner holds it, provably (owner-gated by the engine, not by convention).
@@ -58,7 +58,6 @@ so "everything" is `eq(app, 'hydra')` rather than an unfiltered scan.
 ## Expiry as the mechanism, not a cleanup job
 
 `ExpirationTime.fromBlocks(n)` is exact — no transaction happens at the expiry block, and there
-is no expiry event. A watcher holds `{entityKey → expiresAt}` from `EntityCreated`, updates it on
-`ExpiryExtended`, drops it on `EntityDeleted`, and infers a lapse by comparing against head. Claims
+is no expiry event; the row just stops showing up in queries. Claims
 use this deliberately: a crashed worker's claim needs nothing to act on it — it just stops
 answering for that key. See `docs/ARCHITECTURE.md` §2 "Expiry".

@@ -5,8 +5,7 @@
 1. **Need a concrete use case** (company, who it serves, how it makes money). Addressed:
    slides 2, 3 and 8.
 2. **Audit claim on the Swarm slide was wrong.** Swarm chunks are content-addressed only:
-   no query, no history. The queryable audit trail is Arkiv (`queryByTag` /
-   `queryByTagAndType`). Addressed: moved to slide 5, Swarm slide reworded.
+   no query, no history. The queryable audit trail is Arkiv (`queryByTagAndType`). Addressed: moved to slide 5, Swarm slide reworded.
 
 3. **Slide 3 and 7 described only a single hand-off and claimed no liveness tracking exists.**
    Both are now stale: the demo does a double hand-off (two agents die in sequence), and

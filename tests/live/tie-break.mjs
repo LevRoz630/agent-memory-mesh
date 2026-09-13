@@ -8,8 +8,7 @@ import { makeClients, makeAgentSigners, queryByTagAndType } from '../../src/arki
 import { tryClaim } from '../../src/protocol.mjs'
 
 const httpUrl = process.env.ARKIV_HTTP_URL
-const wsUrl = process.env.ARKIV_WS_URL
-const { pub } = makeClients({ privateKey: process.env.ARKIV_PRIVATE_KEY, httpUrl, wsUrl })
+const { pub } = makeClients({ privateKey: process.env.ARKIV_PRIVATE_KEY, httpUrl })
 const signers = makeAgentSigners({ httpUrl })
 const ctx = { pub, signers }
 

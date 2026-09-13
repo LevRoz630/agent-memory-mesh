@@ -15,7 +15,7 @@ public/control.html           control room: start a run, cut an agent's power
 scripts/orchestrator.mjs      the same run headless, with scheduled kills
         │
         ▼
-server.mjs                    REST app (src/app.mjs) + /api/demo/* + demo state pushed on /live
+server.mjs                    /api/demo/* + demo state pushed on /live
         │
         ▼
 src/demo.mjs                  peer-symmetric controller: per agent, heartbeat + peer watch +
@@ -28,9 +28,6 @@ src/lane.mjs                  per-agent append-only feeds on Swarm
 src/memory.mjs                joins the two legs: upload to Swarm, then index in Arkiv
         ├──────────────► src/swarm.mjs      encrypt → stamp → upload → reference
         └──────────────► src/arkiv.mjs      createEntity{ attributes incl. swarm_ref }
-
-scripts/agent-chat.mjs        a Claude session with two tools: remember / recall (via REST)
-scripts/audit-exporter.mjs    continuous export of every event to a durable log
 ```
 
 A Swarm upload that fails leaves no Arkiv row behind — a row must never point at content that
@@ -53,7 +50,7 @@ Chain: Tiramisu. One entity type, `agent_memory`, seven possible attributes (sna
 | `swarm_ref`   | `str` | 64-hex Swarm reference |
 | `outcome`     | `str` | `fixed` / `reopened` — `verdict` rows only |
 
-Queries compose `eq`/`gte`/`startsWith` under `and`; Arkiv rejects a predicate-free query, so
+Queries compose `eq`/`startsWith` under `and`; Arkiv rejects a predicate-free query, so
 "everything" is `eq(app, 'hydra')`.
 
 **Identity.** Four wallets: a funder plus one signer per agent (`ARKIV_PRIVATE_KEY_ATLAS/NOVA/SOL`).
@@ -64,17 +61,7 @@ renew or release another's claim or row.
 **Expiry.** `ExpirationTime.fromBlocks(n)` is exact; the applied value is resolved against
 whichever block the transaction lands in, so requested and applied can differ (both are
 returned). No `deleteEntity` call is needed for a row to disappear — it just stops existing at
-its expiry block. There is no expiry event: a watcher holds `{entityKey → expiresAt}` from
-`EntityCreated`, updates it on `ExpiryExtended`, drops it on `EntityDeleted`, and infers a lapse
-by comparing against the current block.
-
-**Live view.** `watchEntityEvents` delivers `{entityKey, owner, expiresAt}` only; each event is
-read back to check `app` before being treated as ours. The watch needs a `webSocket()`-transport
-client. The audit exporter (§6) is its consumer.
-
-**Demo clamp.** `DEMO_MAX_TTL_BLOCKS`, applied only to `claim` writes made through
-`POST /api/memory`, caps a claim's requested TTL for recorded demos. The response reports
-requested/applied/clamped separately.
+its expiry block, and every query after that simply stops returning it.
 
 ---
 
@@ -92,8 +79,7 @@ rather than the gateway's. One stamp covers one chunk, capping content at 4096 b
 (encrypted); larger content is refused rather than split.
 
 Download: try each configured agent's private key until one unwraps the content key, then
-decrypt. `openForAnyAgent` tries all three operational agents; `openForAuditor` decrypts with
-only the auditor's key (§6), no fallback.
+decrypt (`openForAnyAgent`).
 
 The postage batch has depth 23 and a multi-day TTL; expiry is independent of whatever Arkiv still
 points at it.
@@ -232,43 +218,15 @@ fix was published, not a re-run of it.
 
 ## 5. HTTP paths
 
-**Write.** `POST /api/memory` → validate fields → select signer for `agentId` → clamp TTL if
-`claim` → upload to Swarm, create Arkiv entity → return `{entityKey, txHash, swarmRef,
-appliedTtlBlocks, appliedExpiresAt, requestedTtlBlocks, ttlClamped}`.
-
-**Read.** `GET /api/query?agentId=…` → Arkiv predicate → fetch and decrypt each row's Swarm
-content; a failed fetch degrades to `{error: 'content unavailable: …'}` on that row only.
-
 **Live.** Every change to the demo state is pushed over the WebSocket on `/live` as a `demo`
 message; the control room renders from it. `/` redirects to `/control.html`.
 
 **Demo.** `POST /api/demo/start`, `POST /api/demo/kill/:agentId` (both behind `DEMO_PASSWORD` when
-set), `GET /api/demo/state`, `GET /api/demo/report?as=<agent|outsider>`.
+set), `GET /api/demo/state`, `GET /api/demo/report?as=<agent|outsider>`, `GET /api/head`.
 
 ---
 
-## 6. Audit export
-
-Arkiv rows and the Swarm postage batch both expire — there is no later point at which the full
-history can be pulled in bulk, and Swarm has no bulk-list or enumeration API of any kind
-(retrieval is strictly by known reference). The only mechanism is continuous export as events
-happen: `scripts/audit-exporter.mjs` subscribes to the same event stream `server.mjs` does, re-arms
-the subscription after an error, and appends every `created`/`extended`/`deleted` event, decrypted,
-to a local log. A row deleted before it could be read back is logged as `created-unreadable`, and a
-dropped subscription as `watch-error`, so gaps are visible rather than silent.
-
-Decryption uses a fourth, optional roster recipient: if `AUDITOR_PUBLIC_KEY` is set,
-`sealForRoster` wraps a copy of the content key for it from the public key alone. The exporter
-holds only `AUDITOR_PRIVATE_KEY` — no agent key, no Swarm write credentials, so it can read and
-decrypt but not write to Arkiv or spend postage. `scripts/generate-auditor-key.mjs` generates the
-pair.
-
-This only covers memories written after the auditor's public key is added to the roster, and
-Arkiv's metadata (who claimed what, when) needs no key at all — it's already public.
-
----
-
-## 7. Known limits
+## 6. Known limits
 
 - 4096 bytes per memory; no splitting for larger content.
 - The Swarm `Stamper`'s bucket counters are in-memory only; a restart can eventually re-stamp a
@@ -276,8 +234,7 @@ Arkiv's metadata (who claimed what, when) needs no key at all — it's already p
 - The claim tie-break narrows the race window but doesn't eliminate it under arbitrary network
   skew. A prior worker whose heartbeat is live but whose worker loop hangs (rather than throwing)
   holds newcomers off an incident until its heartbeat lapses.
-- All three agents' keys and the auditor's key can sit in the same process/`.env`; real isolation
-  between them requires separate processes with separate custody, which isn't built. The server
-  holding the agent keys signs `POST /api/memory` for whichever `agentId` the caller names, and
-  `GET /api/query` and `/api/demo/report?as=<agent>` return decrypted content to any
-  caller — the encryption protects content on Swarm and at the gateway, not from this server's API.
+- All three agents' keys sit in the same process/`.env`; real isolation between them requires
+  separate processes with separate custody, which isn't built. `/api/demo/report?as=<agent>`
+  returns decrypted content to any caller — the encryption protects content on Swarm and at the
+  gateway, not from this server's API.

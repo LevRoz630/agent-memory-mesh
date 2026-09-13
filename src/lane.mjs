@@ -1,7 +1,7 @@
 // Per-agent "lanes" on Swarm: an indexed feed at address hash(owner, topic, index), where
 // topic = hash('hydra/' + tag). Anyone holding a wallet address and the tag can compute the
 // address, but reading the content back also requires a roster private key. Lane payloads are
-// sealed the same roster-scoped way memories are (src/swarm.mjs's sealForRoster/openForAnyAgent).
+// sealed to the roster the same way memories are (src/swarm.mjs's sealForRoster/openForAnyAgent).
 // Writing is further restricted to that owner's slot specifically. See ARCHITECTURE.md §4 "Lanes".
 //
 // bee-js's package.json `exports` only allows importing its top-level entry point, and the plain
@@ -14,7 +14,6 @@
 
 import { Topic, FeedIndex, Identifier, EthAddress, Bytes, keccak256, makeSOCAddress } from '@ethersphere/core-sdk'
 import { getSwarm, sealForRoster, openForAnyAgent } from './swarm.mjs'
-import { AGENT_IDS } from './arkiv.mjs'
 
 const MAX_LANE_PAYLOAD_BYTES = 4096
 
@@ -26,11 +25,11 @@ function socAddressFor(ownerHex, topic, index) {
   return makeSOCAddress(identifier, owner)
 }
 
-export async function writeToLane(agentPrivateKeyHex, ownerAddressHex, tag, index, content, roster = AGENT_IDS) {
+export async function writeToLane(agentPrivateKeyHex, ownerAddressHex, tag, index, content) {
   const { bee, stamper } = getSwarm()
   const topic = Topic.fromString('hydra/' + tag)
   const address = socAddressFor(ownerAddressHex, topic, index)
-  const payload = sealForRoster(Buffer.from(JSON.stringify(content), 'utf8'), roster)
+  const payload = sealForRoster(Buffer.from(JSON.stringify(content), 'utf8'))
   if (payload.length > MAX_LANE_PAYLOAD_BYTES) {
     throw new Error(`lane payload is ${payload.length} bytes; one stamped chunk holds ${MAX_LANE_PAYLOAD_BYTES}`)
   }

@@ -97,7 +97,6 @@ await pub.getEntity(expiredKey)               // created, read, then left to exp
 A malformed key does differ: `InvalidValueError: Invalid key value "0xdead": 2 bytes, not exactly 32 bytes.`
 
 Expired entity `0x6a9bf0cc…`. Distinguishing "expired" from "unknown key" in a UI requires
-caching the expiry height at write time; `src/arkiv.mjs` (`watchMemories`) treats both as
-skip.
+caching the expiry height at write time.
 
 Reproduce: `arkiv-feedback/repro/04-not-found-ambiguity.mjs` (writes a short TTL, waits past it)

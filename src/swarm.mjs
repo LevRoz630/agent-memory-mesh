@@ -127,19 +127,7 @@ function agentPrivateKeyBuffer(agentId) {
   return Buffer.from(hex.replace(/^0x/, ''), 'hex')
 }
 
-// The auditor is not an operational agent: it never signs an Arkiv transaction, so it isn't in
-// AGENT_IDS and doesn't take a slot in that array's index scheme. Reserved index 3, one past the
-// three agents, keeps its wrap entry structurally separate from decryptForAnyAgent's loop. A
-// writer process that never sets AUDITOR_PUBLIC_KEY produces exactly the old 3-recipient blob.
-const AUDITOR_AGENT_INDEX = 3
-
-function auditorPublicKey() {
-  const hex = process.env.AUDITOR_PUBLIC_KEY
-  if (!hex) return null
-  return Buffer.from(hex.replace(/^0x/, ''), 'hex')
-}
-
-function decryptForAnyAgent(blob) {
+export function openForAnyAgent(blob) {
   for (const agentId of AGENT_IDS) {
     const priv = agentPrivateKeyBuffer(agentId)
     if (!priv) continue
@@ -176,39 +164,19 @@ export function getSwarm() {
   return { bee, stamper }
 }
 
-// Reusable by anything sealing content to the roster (uploadMemory here, src/lane.mjs's lane
-// payloads). This is the recipient-building logic uploadMemory used to duplicate inline.
-//
-// If AUDITOR_PUBLIC_KEY is configured, every seal also wraps a copy of the content key for the
-// auditor, using only their public key and never a private key held by this process. That's
-// what makes "a single observer wallet with access to all logs" a real, separately-custodied
-// identity instead of just a fourth name for a key this process already holds: the writer can
-// grant the auditor access without ever being able to decrypt anything as the auditor itself.
-export function sealForRoster(plaintext, roster = AGENT_IDS) {
-  const recipients = roster.map((agentId) => {
+// Shared by uploadMemory and src/lane.mjs's lane payloads.
+export function sealForRoster(plaintext) {
+  const recipients = AGENT_IDS.map((agentId, agentIndex) => {
     const priv = agentPrivateKeyBuffer(agentId)
     if (!priv) throw new Error(`no key configured for roster agent "${agentId}" — set ARKIV_PRIVATE_KEY_${agentId.toUpperCase()}`)
-    return { agentIndex: AGENT_IDS.indexOf(agentId), publicKey: derivePublicKey(priv) }
+    return { agentIndex, publicKey: derivePublicKey(priv) }
   })
-  const auditorPub = auditorPublicKey()
-  if (auditorPub) recipients.push({ agentIndex: AUDITOR_AGENT_INDEX, publicKey: auditorPub })
   return encryptForRoster(plaintext, recipients)
 }
 
-export function openForAnyAgent(blob) {
-  return decryptForAnyAgent(blob)
-}
-
-// Distinct from openForAnyAgent on purpose: the auditor decrypts with ONLY their own key, never
-// by trying the three agents' keys, because a real deployment never hands the auditor's process
-// those keys in the first place.
-export function openForAuditor(blob, auditorPrivateKeyBuffer) {
-  return decryptWithKey(blob, AUDITOR_AGENT_INDEX, auditorPrivateKeyBuffer)
-}
-
-export async function uploadMemory(content, roster = AGENT_IDS) {
+export async function uploadMemory(content) {
   const { bee, stamper } = getSwarm()
-  const blob = sealForRoster(Buffer.from(JSON.stringify(content), 'utf8'), roster)
+  const blob = sealForRoster(Buffer.from(JSON.stringify(content), 'utf8'))
   if (blob.length > MAX_BLOB_BYTES) {
     throw new Error(`encrypted content is ${blob.length} bytes; one stamped chunk holds ${MAX_BLOB_BYTES}`)
   }

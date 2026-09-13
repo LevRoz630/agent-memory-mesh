@@ -129,7 +129,7 @@ DC-1 (atlas) going down once, with DC-2/DC-3 recovering it. Once wired in, any o
 centers can be cut — including a worker's own DC, including a second one mid-recovery — and
 detected and recovered by whichever agent is left standing.
 
-## 6. Security and audit
+## 6. Security
 
 **Encryption**: every memory and lane payload gets a random 32-byte content key, AES-256-GCM over
 the content, the content key wrapped per roster recipient via ECIES (ephemeral ECDH over
@@ -142,20 +142,6 @@ the roster a *demonstrated* mechanism today, not an *enforced* boundary between 
 parties — splitting the agents into genuinely separate processes with separate key custody is the
 next step, and the crypto doesn't change to get there, only who holds which key.
 
-**Audit export**: Arkiv rows and the Swarm postage batch both expire, and Swarm has no bulk-list
-or export API of any kind — retrieval is strictly by known reference. So there's no later point
-at which the full history can be pulled in bulk. The only mechanism is continuous export as
-events happen: a dedicated script subscribes to the same live event stream the app itself uses
-and appends every created/renewed/released event, decrypted, to a durable log — before either
-side ages out.
-
-The exporter uses a fourth, separately-custodied roster recipient: an auditor's *public* key gets
-added to every seal at write time; the exporter process holds only the corresponding *private*
-key — no agent key, no Swarm write credentials, so it can read and decrypt but can't write to
-Arkiv or spend postage. This only covers memories written after the auditor key is added to the
-roster; Arkiv's own metadata (who claimed what, when) needs no key at all, since it's already
-public.
-
 ## 7. What's real vs. what's future work
 
 **Built and live-verified against the real testnet and gateway:**
@@ -164,7 +150,6 @@ public.
 - The deterministic tie-break, including its settle-window fix for cross-block race conditions
 - Per-agent lanes with resumable work (a successor genuinely reads a dead worker's progress)
 - Roster-scoped envelope encryption (real ECIES, not a shared key)
-- The continuous audit-export mechanism with a separately-custodied auditor identity
 - Heartbeat-based peer liveness and outage detection (any agent, not just atlas, can notice a
   peer going down)
 
@@ -172,8 +157,7 @@ public.
 
 - Memories over 4KB — one postage stamp covers exactly one chunk; larger content is refused, not
   split. Splitting across multiple stamped chunks with a manifest is the fix, not yet built.
-- Real per-process key custody — today one process holds every key (three agents' and the
-  auditor's). Genuine isolation between them needs separate processes, which isn't built.
+- Real per-process key custody — today one process holds all three agents' keys. Genuine isolation between them needs separate processes, which isn't built.
 - The Swarm `Stamper`'s bucket counters are in-memory only; a restart can eventually re-stamp a
   filled bucket. `Stamper.fromState` exists to fix this and isn't wired up.
 - The claim tie-break narrows the race window but doesn't eliminate it under arbitrary network

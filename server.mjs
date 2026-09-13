@@ -1,10 +1,10 @@
-// Entrypoint: the shared REST app plus the control room's demo endpoints, with demo state pushed
-// over the websocket on /live.
+// Entrypoint: the control room's demo endpoints, with demo state pushed over the websocket on /live.
 
 import { createServer } from 'node:http'
 import { createECDH, timingSafeEqual } from 'node:crypto'
+import { fileURLToPath } from 'node:url'
+import express from 'express'
 import { WebSocketServer } from 'ws'
-import { createApp } from './src/app.mjs'
 import { makeClients, makeAgentSigners, AGENT_IDS } from './src/arkiv.mjs'
 import { downloadSealed, decryptWithKey } from './src/swarm.mjs'
 import { createDemo } from './src/demo.mjs'
@@ -28,7 +28,8 @@ if (signers.size === 0) {
 }
 for (const [agentId, { account }] of signers) console.log(`signer ${agentId}: ${account.address}`)
 
-const app = createApp({ pub, signers })
+const app = express()
+app.use(express.static(fileURLToPath(new URL('./public', import.meta.url))))
 const httpServer = createServer(app)
 const wss = new WebSocketServer({ server: httpServer, path: '/live' })
 
@@ -64,6 +65,15 @@ function requireDemoPassword(req, res, next) {
 }
 
 app.get('/', (_req, res) => res.redirect('/control.html'))
+
+app.get('/api/head', async (_req, res) => {
+  try {
+    res.json({ head: (await pub.getBlockNumber()).toString() })
+  } catch (e) {
+    console.error('head failed:', e)
+    res.status(500).json({ error: e.message })
+  }
+})
 
 app.get('/api/demo/state', (_req, res) => res.json(demo.getState()))
 

@@ -2,9 +2,7 @@ node_modules/
 .env
 .env.*
 !.env.example
-!.env.auditor.example
 *.key
 .burner-key
 .second-key
 dist/
-audit-log.jsonl

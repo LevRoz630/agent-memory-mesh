@@ -12,7 +12,7 @@ import { createDemo } from '../src/demo.mjs'
 import { createDemoOps } from '../src/demo-ops.mjs'
 
 const httpUrl = process.env.ARKIV_HTTP_URL
-const { pub } = makeClients({ privateKey: process.env.ARKIV_PRIVATE_KEY, httpUrl, wsUrl: process.env.ARKIV_WS_URL })
+const { pub } = makeClients({ privateKey: process.env.ARKIV_PRIVATE_KEY, httpUrl })
 const signers = makeAgentSigners({ httpUrl })
 
 let printed = 0
