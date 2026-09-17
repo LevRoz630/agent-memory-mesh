@@ -35,7 +35,7 @@ await new Promise((r) => setTimeout(r, 45000))
 stopWatch()
 
 const novaDetected = detected.filter((d) => d.peerId === 'nova')
-console.log(`  sol detected nova's outage: ${novaDetected.length >= 1} (${novaDetected.length} time(s))`)
+console.log(`  sol detected nova's outage: ${novaDetected.length === 1} (${novaDetected.length} time(s))`)
 
 // The heartbeat still had a live lease when the watch started, so a detection that fires on the
 // very first poll would mean the lease was read as gone before it actually lapsed.

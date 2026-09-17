@@ -3,9 +3,14 @@ node_modules
 .env.*
 !.env.example
 *.key
-.burner-key
-.second-key
-dist/
 data/
 docs/pitch/
 .vercel/
+.DS_Store
+*.log
+logs/
+.vscode/
+.idea/
+coverage/
+.claude/
+CLAUDE.md

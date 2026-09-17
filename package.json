@@ -7,6 +7,8 @@
     "node": ">=20"
   },
   "license": "MIT",
+  "author": "Lev Rozanov",
+  "repository": { "type": "git", "url": "git+https://github.com/LevRoz630/agent-memory-mesh.git" },
   "description": "Agent memory as content (Swarm) + expiring index (Arkiv) — ETHRome 2026",
   "scripts": {
     "start": "node --env-file=.env server.mjs",
@@ -28,6 +30,7 @@
   "dependencies": {
     "@arkiv-network/sdk": "^0.8.0",
     "@ethersphere/bee-js": "^13.1.0",
+    "@ethersphere/core-sdk": "^0.1.1",
     "express": "^4.21.0",
     "viem": "^2.56.3",
     "ws": "^8.21.3"

@@ -155,8 +155,8 @@ export function getSwarm() {
     if (!pk || !batchId) {
       throw new Error('set SWARM_SIGNER_KEY and SWARM_POSTAGE_BATCH_ID (the batch and the key that owns it) in the environment')
     }
-    // Depth 23 is the drive we were given (§4). It isn't readable back from here: the gateway
-    // exposes no /stamps, and this node accepted stamps for every depth from 16 to 30, so it
+    // Depth 23 is the batch we were given (ARCHITECTURE.md §3). It isn't readable back from here: the
+    // gateway exposes no /stamps, and this node accepted stamps for every depth from 16 to 30, so it
     // validates the signature but not the slot index. Depth decides only how many slots we
     // believe each bucket has before refusing to reuse one.
     const depth = Number(process.env.SWARM_BATCH_DEPTH || 23)

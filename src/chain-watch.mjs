@@ -82,7 +82,7 @@ export function createChainWatch({ client, onUpdate = () => {} }) {
 
   function armStallTimer() {
     clearTimeout(stallTimer)
-    stallTimer = setTimeout(() => restart('no block head for 15s'), STALL_MS)
+    stallTimer = setTimeout(() => restart(`no block head for ${STALL_MS / 1000}s`), STALL_MS)
   }
 
   // viem reconnects a dropped socket but does not restore the subscriptions behind it.

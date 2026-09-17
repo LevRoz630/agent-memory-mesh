@@ -8,6 +8,7 @@
 
 import { makeClients, makeAgentSigners } from '../../src/arkiv.mjs'
 import { writeMemory } from '../../src/memory.mjs'
+import { LONG_LIVED_BLOCKS } from '../../src/protocol.mjs'
 import { writeToLane } from '../../src/lane.mjs'
 import { takeOver } from '../../src/protocol.mjs'
 
@@ -33,7 +34,7 @@ console.log('  wrote nova\'s lane content at index 0 (kind: diagnosis)')
 
 await writeMemory(nova.wallet, {
   agentId: 'nova', memoryType: 'lane', tag, importance: 5,
-  content: { note: 'lane provenance marker' }, ttlBlocks: 600,
+  content: { note: 'lane provenance marker' }, ttlBlocks: LONG_LIVED_BLOCKS,
 })
 console.log('  wrote the `lane` Arkiv row pointing at nova\'s lane')
 

@@ -134,10 +134,7 @@ export async function tryClaim(ctx, agentId, tag, attempt = 0) {
 //   "entity 0x… already expires at block N, so extending it to M would shorten its life" — this
 //     renewal followed so close behind the previous one that it would move the expiry backwards.
 //     The lease is intact; skipping this one extension is a no-op.
-// Neither wording matches /expiry/, which is what this used to test: the lapse escaped as a throw
-// that aborted the renewal loop without the caller learning the claim was gone, and the benign case
-// was not actually being swallowed either. "expired" is checked first, since "expires" is a prefix
-// match away from it.
+// "expired" is checked first, since "expires" is a prefix match away from it.
 function classifyExtendError(e) {
   if (/expired/i.test(e.message)) return 'lapsed'
   if (/expir/i.test(e.message)) return 'too-soon'

@@ -2,7 +2,7 @@
 
 One entity type, `agent_memory`, used for every row Hydra writes. The role a row plays is carried
 entirely in its attributes — there is no separate on-chain type per role. Full design rationale:
-`docs/ARCHITECTURE.md` §2 and §4.
+[ARCHITECTURE.md](ARCHITECTURE.md) §2 and §4.
 
 ## Attributes
 
@@ -17,7 +17,7 @@ entirely in its attributes — there is no separate on-chain type per role. Full
 | `outcome`     | `str` | `fixed` \| `reopened` — present only on `verdict` rows              |
 
 Names are snake_case only — the engine's charset silently differs from what its client-side
-validator accepts (see `arkiv-feedback/friction.md` finding 2).
+validator accepts (see [`arkiv-feedback/friction.md`](../arkiv-feedback/friction.md) finding 2).
 
 ## The six roles
 
@@ -60,4 +60,4 @@ so "everything" is `eq(app, 'hydra')` rather than an unfiltered scan.
 `ExpirationTime.fromBlocks(n)` is exact — no transaction happens at the expiry block, and there
 is no expiry event; the row just stops showing up in queries. Claims
 use this deliberately: a crashed worker's claim needs nothing to act on it — it just stops
-answering for that key. See `docs/ARCHITECTURE.md` §2 "Expiry".
+answering for that key. See [ARCHITECTURE.md](ARCHITECTURE.md) §2 "Expiry".

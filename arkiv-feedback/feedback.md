@@ -76,7 +76,8 @@ Promise.allSettled(Array.from({ length: 6 }, () => wallet.createEntity(...)))
 | `privateKeyToAccount(key)`                   | 1/6 fulfilled; 5×`EntityMutationError: Transaction failed: Execution error without revert data` |
 | `privateKeyToAccount(key, { nonceManager })` | 6/6 fulfilled, 6 distinct entity keys                                                              |
 
-The error text names no nonce. Applied in `src/arkiv.mjs` (`makeClients`).
+The error text names no nonce. Hydra does not use it — see finding 6; `src/arkiv.mjs` (`mutate`)
+counts nonces per wallet instead.
 
 Request: default to a nonce manager in the quickstart's account setup, or state that
 concurrent writes from one signer require one.

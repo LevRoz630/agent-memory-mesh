@@ -1,4 +1,4 @@
-// Pure crypto round-trip for the binary envelope format (spec §2). No network, no env vars.
+// Pure crypto round-trip for the binary envelope format (ARCHITECTURE.md §3). No network, no env vars.
 //
 //   node tests/unit/envelope-crypto.mjs
 

@@ -13,6 +13,7 @@ Arkiv attribute values are capped at 128 bytes, so content can't live there. Ark
 ```
 public/control.html           control room: start a run, cut a data center's power
 scripts/orchestrator.mjs      the same run headless, with scheduled kills (drives server.mjs over HTTP)
+src/control-client.mjs        boots server.mjs on 3999 and drives it over that same HTTP and WS API
         │
         ▼
 server.mjs                    /api/demo/* + /infra/* + telemetry pushed on /live; signs and decrypts nothing
@@ -30,6 +31,7 @@ src/demo-ops.mjs              binds the agent to the protocol, storage and the p
         ▼
 src/protocol.mjs              claim / renew / takeover / finish / verify, heartbeats, outage watch
 src/lane.mjs                  per-agent append-only feeds on Swarm
+src/receipt.mjs               the public incident receipt (SVG), uploaded to Swarm unencrypted
 src/memory.mjs                joins the two legs: upload to Swarm, then index in Arkiv
         ├──────────────► src/swarm.mjs      encrypt → stamp → upload → reference
         └──────────────► src/arkiv.mjs      createEntity{ attributes incl. swarm_ref }
@@ -43,17 +45,9 @@ doesn't exist.
 ## 2. Arkiv schema
 
 Chain: Tiramisu. One entity type, `agent_memory`, seven possible attributes (snake_case,
-`str`/`u64`). Full detail in `docs/ARKIV_SCHEMA.md`.
-
-| Attribute       | Type    | Values |
-| --------------- | ------- | ------ |
-| `app`         | `str` | `hydra` — constant |
-| `agent_id`    | `str` | `atlas` / `nova` / `sol` |
-| `memory_type` | `str` | `event` / `claim` / `lane` / `done` / `verdict` / `heartbeat` |
-| `tag`         | `str` | `incident-<run>` or `outage-<agent>-<run>-<n>` for incident rows; `agent-<agent>` for a heartbeat |
-| `importance`  | `u64` | 0–10 |
-| `swarm_ref`   | `str` | 64-hex Swarm reference |
-| `outcome`     | `str` | `fixed` / `reopened` — `verdict` rows only |
+`str`/`u64`): `app`, `agent_id`, `memory_type`, `tag`, `importance`, `swarm_ref`, `outcome`. Each
+one's type and accepted values are tabulated in [ARKIV_SCHEMA.md](ARKIV_SCHEMA.md#attributes),
+which is the single source for the schema; this section covers only why it is shaped that way.
 
 Queries compose `eq`/`startsWith` under `and`; Arkiv rejects a predicate-free query, so
 "everything" is `eq(app, 'hydra')`.
@@ -88,10 +82,14 @@ secret.
 Binary framing: `[recipient count][33-byte ephemeral pubkey][per recipient: 1-byte index + 12 iv +
 16 tag + 32 wrapped key][12 iv][16 tag][ciphertext]`.
 
-Upload: `POST /chunks` with a locally signed postage stamp, never
-`POST /bytes` — the chunk path is the one that actually spends this project's own postage batch
-rather than the gateway's. One stamp covers one chunk, capping content at 4096 bytes total
-(encrypted); larger content is refused rather than split.
+Upload: `POST /chunks` with a locally signed postage stamp, never `POST /bytes`. The gateway
+refuses a locally stamped `/bytes` upload outright — 400 with a `swarm-postage-stamp` header, 404
+"batch with id not found" with a `swarm-postage-batch-id` — because the node holds no stamp issuer
+for a batch shared as a key, so every chunk has to arrive already signed. `/chunks` accepts that
+envelope (201, and a wrong signing key is rejected as an invalid stamp signature, which is how we
+know the batch is genuinely being spent). The three results are recorded in `src/swarm.mjs`. One
+stamp covers one chunk, capping content at 4096 bytes total (encrypted); larger content is refused
+rather than split.
 
 Stamping (`src/stamp-slots.mjs`): the three agent processes share one postage batch, so agent *i*
 only uses slots `n·3 + i` in each bucket, and writes its per-bucket counters to
@@ -136,14 +134,8 @@ heartbeat is what peers see.
 
 ### Entity roles
 
-| Role      | `memory_type` | TTL | Written by |
-| --------- | -------------- | --- | ---------- |
-| incident  | `event`     | 600 blocks | reporting agent, or the peer that noticed an outage |
-| claim     | `claim`     | 24 blocks, renewed every 4 while working | working agent |
-| lane      | `lane`      | 600 blocks | each agent, once per incident, the first time it wins the claim |
-| done      | `done`      | 600 blocks | finishing agent |
-| verdict   | `verdict`   | 600 blocks | a verifying agent other than the finisher, after checking the fix |
-| heartbeat | `heartbeat` | 16 blocks, renewed every 2 | each agent, about itself, tag `agent-<id>` |
+Six roles — incident, claim, lane, done, verdict, heartbeat — each a `memory_type` value, with
+its TTL and its writer tabulated in [ARKIV_SCHEMA.md](ARKIV_SCHEMA.md#the-six-roles).
 
 Claims and heartbeats expire on their own; everything else persists. The first five roles share
 one `tag` per incident and differ only by `memory_type`; a heartbeat's tag identifies the agent,
@@ -193,8 +185,9 @@ dead agent only comes back by its outage being finished, so dying again after th
 
 Every live peer that sees an outage works it — whether it filed the row or found it already there —
 so the incident survives its filer dying too. The power-on step of an agent's outage restarts that
-agent's process, and the restarted agent rejoins every incident still open that isn't its own outage. A worker whose step fails (a rack
-whose data center is dark, a Swarm or RPC error) deletes its claim instead of leaving it to expire,
+agent's process, and the restarted agent rejoins every incident still open that isn't its own
+outage. A worker whose step fails (a rack whose data center is dark, a Swarm or RPC error) deletes
+its claim instead of leaving it to expire,
 waits 15 s and tries again, and a watcher survives a failed poll.
 
 ### Lifecycle
@@ -237,8 +230,11 @@ Atlas can also be cut before it files anything. A dark data center reports nothi
 no rack incident — only atlas's outage, detected and worked by nova and sol like any other.
 
 Write order in `finish`: lane content → `lane` row (if this agent has none yet) → `done` → delete
-own claim. The claim keeps renewing until `finish` returns, so it can't lapse before `done` lands. A
-renewal that fails outright is treated like a lapse: the worker stops, releases its claim and retries. Check order before claiming: `verdict` → `done` → `claim` → prior workers' heartbeats.
+own claim. The claim keeps renewing until `finish` returns, so it can't lapse before `done` lands.
+Only a renewal the engine rejects as `expired` is treated as a lapse — the worker stops, releases
+its claim and retries; any other renewal error is retried in place, since a transient RPC failure
+is not evidence the lease is gone. Check order before claiming: `verdict` → `done` → `claim` →
+prior workers' heartbeats.
 
 ### Dead, not slow
 
@@ -268,6 +264,17 @@ is `fixed` only if the lane's latest entry is a `fix` **and** the probe passes, 
 `reopened` verdict is recorded and the control room shows the incident as reopened, not resolved;
 nothing re-opens the work yet.
 
+### Public receipt
+
+When an incident resolves, the finishing agent renders a one-page SVG — the tag, the run's
+timeline, and the incident row's Arkiv entity key and Swarm reference, each linked to the explorer
+— and uploads it to Swarm (`src/receipt.mjs`, `uploadPublicFile` in `src/swarm.mjs`). It is the one
+upload that is not sealed to the roster: it carries no report body, no management host and no key,
+so anyone holding the link can read the outcome and check every row on chain for themselves. SVG
+rather than HTML because the gateway redirects HTML on `/bzz` to an approval page and serves SVG
+inline. The control room links it once the reference arrives; an upload that fails is recorded in
+the timeline and the incident still resolves.
+
 ---
 
 ## 5. HTTP paths
@@ -278,8 +285,9 @@ message; the control room renders from it. `/` redirects to `/control.html`.
 **Chain view.** Independently of the agents, `server.mjs` holds two Arkiv subscriptions over a
 `webSocket()` client (`ARKIV_WS_URL`, default Tiramisu's): `watchEntityEvents` and
 `watchBlockNumber`, with no `fromBlock` — either an `http()` transport or a `fromBlock` makes viem
-poll instead (`arkiv-feedback` finding 5). Events carry only key, owner and expiry, so events from
-wallets outside the roster are dropped without a read, and a roster row's role is read once with
+poll instead ([`arkiv-feedback` finding 5](../arkiv-feedback/friction.md)). Events carry only key,
+owner and expiry, so events from wallets outside the roster are dropped without a read, and a
+roster row's role is read once with
 `getEntity` the first time its key appears. Heartbeat renewals move each agent's lease end; a row
 drops out when a new head passes its expiry block, since Arkiv emits no expiry event. The result is
 pushed on `/live` as a `chain` message and drives the heartbeat lease bars, the block number and the
