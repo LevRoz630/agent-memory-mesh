@@ -9,7 +9,7 @@
   "license": "MIT",
   "author": "Lev Rozanov",
   "repository": { "type": "git", "url": "git+https://github.com/LevRoz630/agent-memory-mesh.git" },
-  "description": "Agent memory as content (Swarm) + expiring index (Arkiv) — ETHRome 2026",
+  "description": "Three agents, three data centers: when one goes dark the others finish its work. Coordination on Arkiv, work log on Swarm — ETHRome 2026",
   "scripts": {
     "start": "node --env-file=.env server.mjs",
     "demo:protocol": "node --env-file=.env scripts/orchestrator.mjs",
